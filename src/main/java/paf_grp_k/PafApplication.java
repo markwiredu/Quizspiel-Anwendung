@@ -1,13 +1,12 @@
-package com.example.patterns_und_framework_gruppe_k;
+package paf_grp_k;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class PatternsUndFrameworkGruppeKApplication {
+public class PafApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(PatternsUndFrameworkGruppeKApplication.class, args);
+        SpringApplication.run(PafApplication.class, args);
     }
-
 }

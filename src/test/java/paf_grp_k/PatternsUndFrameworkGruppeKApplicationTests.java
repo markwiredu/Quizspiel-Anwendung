@@ -1,4 +1,4 @@
-package com.example.patterns_und_framework_gruppe_k;
+package paf_grp_k;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
