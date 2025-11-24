@@ -8,10 +8,10 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 /**
- * REST-Controller für Spieler.
+ * REST-Controller zur Verwaltung von Spielern.
  *
- * <p>Dieser Controller stellt Endpunkte bereit, um Spieler zu verwalten und
- * abzurufen. Aktuell sind nur Leseoperationen (GET) implementiert.</p>
+ * <p>Dieser Controller stellt Endpunkte zum Abrufen, Erstellen und Abfragen von Spielern
+ * bereit.</p>
  */
 @RestController
 @RequestMapping("/api/players")
@@ -24,11 +24,11 @@ public class PlayerController {
     private PlayerRepository playerRepository;
 
     /**
-     * Gibt eine Liste aller Spieler zurück.
+     * Gibt alle Spieler zurück.
      *
-     * <p>HTTP GET auf {@code /api/players}</p>
+     * <p>HTTP GET: {@code /api/players}</p>
      *
-     * @return Liste aller Spieler in der Datenbank
+     * @return Liste aller Spieler
      */
     @GetMapping
     public List<Player> getAllPlayers() {
@@ -36,17 +36,40 @@ public class PlayerController {
     }
 
     /**
-     * Gibt einen einzelnen Spieler anhand seiner ID zurück.
+     * Gibt einen bestimmten Spieler anhand seiner ID zurück.
      *
-     * <p>HTTP GET auf {@code /api/players/{id}}</p>
+     * <p>HTTP GET: {@code /api/players/{id}}</p>
      *
      * @param id die eindeutige ID des Spielers
      * @return der Spieler mit der angegebenen ID
-     * @throws RuntimeException wenn kein Spieler mit dieser ID gefunden wird
+     * @throws RuntimeException wenn kein Spieler mit dieser ID existiert
      */
     @GetMapping("/{id}")
-    public Player getPlayer(@PathVariable Long id) {
+    public Player getPlayerById(@PathVariable Long id) {
         return playerRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Player not found"));
+                .orElseThrow(() -> new RuntimeException("Player not found with id: " + id));
+    }
+
+    /**
+     * Erstellt einen neuen Spieler.
+     *
+     * <p>HTTP POST: {@code /api/players}</p>
+     * <p>Es wird überprüft, dass Benutzername und Passwort-Hash gesetzt sind.</p>
+     *
+     * @param player das Spieler-Objekt, das erstellt werden soll
+     * @return der gespeicherte Spieler
+     * @throws RuntimeException wenn Benutzername oder Passwort-Hash fehlen
+     */
+    @PostMapping
+    public Player createPlayer(@RequestBody Player player) {
+        // Einfache Validierung
+        if (player.getUsername() == null || player.getUsername().trim().isEmpty()) {
+            throw new RuntimeException("Username is required");
+        }
+        if (player.getPasswordHash() == null || player.getPasswordHash().trim().isEmpty()) {
+            throw new RuntimeException("Password hash is required");
+        }
+
+        return playerRepository.save(player);
     }
 }

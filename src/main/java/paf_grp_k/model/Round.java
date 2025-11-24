@@ -1,75 +1,88 @@
 package paf_grp_k.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
 
 /**
  * Repräsentiert eine einzelne Runde innerhalb eines Spiels.
- *
- * <p>Eine Runde verbindet eine gestellte Frage mit den Antworten der beiden Spieler
- * sowie den jeweils erzielten Punkten. Mehrere Runden gehören zu einem
- * übergeordneten Spiel.</p>
+ * Enthält Informationen zu den Antworten der Spieler, erreichten Punkten
+ * und die zugehörige Frage.
  */
-@Data
 @Entity
 @Table(name = "rounds")
 public class Round {
 
     /**
-     * Eindeutige ID der Runde.
-     *
-     * <p>Wird automatisch durch die Datenbank erzeugt (Auto-Increment).</p>
+     * Eindeutige ID der Runde (Primärschlüssel).
      */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /**
-     * Die laufende Nummer der Runde im Spiel.
-     *
-     * <p>Beginnt typischerweise bei 1 und erhöht sich pro Runde.</p>
+     * Nummer der Runde innerhalb eines Spiels.
      */
     private int roundNumber;
 
     /**
-     * Antwort, die Spieler 1 in dieser Runde gegeben hat.
-     *
-     * <p>Erwartete Werte sind typischerweise „A“, „B“, „C“ oder „D“.</p>
+     * Antwort von Spieler 1 in dieser Runde.
      */
     private String answerPlayer1;
 
     /**
-     * Antwort, die Spieler 2 in dieser Runde gegeben hat.
-     *
-     * <p>Erwartete Werte sind typischerweise „A“, „B“, „C“ oder „D“.</p>
+     * Antwort von Spieler 2 in dieser Runde.
      */
     private String answerPlayer2;
 
     /**
-     * Punktzahl, die Spieler 1 für diese Runde erhält.
+     * Punkte, die Spieler 1 in dieser Runde erzielt hat.
      */
     private int pointsPlayer1 = 0;
 
     /**
-     * Punktzahl, die Spieler 2 für diese Runde erhält.
+     * Punkte, die Spieler 2 in dieser Runde erzielt hat.
      */
     private int pointsPlayer2 = 0;
 
     /**
-     * Das Spiel, zu dem diese Runde gehört.
-     *
-     * <p>Eine Many-to-One-Beziehung — ein Spiel enthält mehrere Runden.</p>
+     * Zugehöriges Spiel, zu dem diese Runde gehört.
      */
     @ManyToOne
     @JoinColumn(name = "game_id")
     private Game game;
 
     /**
-     * Die Frage, die in dieser Runde gestellt wurde.
-     *
-     * <p>Eine Many-to-One-Beziehung — eine Frage kann theoretisch in mehreren Runden verwendet werden.</p>
+     * Frage, die in dieser Runde gestellt wurde.
      */
     @ManyToOne
     @JoinColumn(name = "question_id")
     private Question question;
+
+
+    // -----------------------------------------------------
+    // Getter und Setter mit JavaDoc
+    // -----------------------------------------------------
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public int getRoundNumber() { return roundNumber; }
+    public void setRoundNumber(int roundNumber) { this.roundNumber = roundNumber; }
+
+    public String getAnswerPlayer1() { return answerPlayer1; }
+    public void setAnswerPlayer1(String answerPlayer1) { this.answerPlayer1 = answerPlayer1; }
+
+    public String getAnswerPlayer2() { return answerPlayer2; }
+    public void setAnswerPlayer2(String answerPlayer2) { this.answerPlayer2 = answerPlayer2; }
+
+    public int getPointsPlayer1() { return pointsPlayer1; }
+    public void setPointsPlayer1(int pointsPlayer1) { this.pointsPlayer1 = pointsPlayer1; }
+
+    public int getPointsPlayer2() { return pointsPlayer2; }
+    public void setPointsPlayer2(int pointsPlayer2) { this.pointsPlayer2 = pointsPlayer2; }
+
+    public Game getGame() { return game; }
+    public void setGame(Game game) { this.game = game; }
+
+    public Question getQuestion() { return question; }
+    public void setQuestion(Question question) { this.question = question; }
 }
