@@ -1,75 +1,122 @@
 package paf_grp_k.controller;
 
+import paf_grp_k.dto.CreatePlayerRequest;
+import paf_grp_k.dto.PlayerResponse;
 import paf_grp_k.model.Player;
 import paf_grp_k.repository.PlayerRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * REST-Controller zur Verwaltung von Spielern.
  *
- * <p>Dieser Controller stellt Endpunkte zum Abrufen, Erstellen und Abfragen von Spielern
- * bereit.</p>
+ * <p>Dieser Controller stellt Endpunkte bereit, um Spieler zu registrieren,
+ * Informationen über alle Spieler abzurufen sowie einen einzelnen Spieler
+ * anhand seiner ID zu erhalten.</p>
  */
 @RestController
 @RequestMapping("/api/players")
+@RequiredArgsConstructor
 public class PlayerController {
 
-    /**
-     * Repository für den Zugriff auf {@link Player}-Daten.
-     */
-    @Autowired
-    private PlayerRepository playerRepository;
+    private final PlayerRepository playerRepository;
 
     /**
-     * Gibt alle Spieler zurück.
+     * Registriert einen neuen Spieler.
      *
-     * <p>HTTP GET: {@code /api/players}</p>
+     * <p>Es wird geprüft, ob der Benutzername bereits vergeben ist. Falls ja,
+     * wird ein {@code 400 Bad Request} zurückgegeben. Andernfalls wird ein neuer
+     * Spieler angelegt, gespeichert und als {@link PlayerResponse} zurückgegeben.</p>
      *
-     * @return Liste aller Spieler
-     */
-    @GetMapping
-    public List<Player> getAllPlayers() {
-        return playerRepository.findAll();
-    }
-
-    /**
-     * Gibt einen bestimmten Spieler anhand seiner ID zurück.
-     *
-     * <p>HTTP GET: {@code /api/players/{id}}</p>
-     *
-     * @param id die eindeutige ID des Spielers
-     * @return der Spieler mit der angegebenen ID
-     * @throws RuntimeException wenn kein Spieler mit dieser ID existiert
-     */
-    @GetMapping("/{id}")
-    public Player getPlayerById(@PathVariable Long id) {
-        return playerRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Player not found with id: " + id));
-    }
-
-    /**
-     * Erstellt einen neuen Spieler.
-     *
-     * <p>HTTP POST: {@code /api/players}</p>
-     * <p>Es wird überprüft, dass Benutzername und Passwort-Hash gesetzt sind.</p>
-     *
-     * @param player das Spieler-Objekt, das erstellt werden soll
-     * @return der gespeicherte Spieler
-     * @throws RuntimeException wenn Benutzername oder Passwort-Hash fehlen
+     * @param request Daten des anzulegenden Spielers
+     * @return HTTP-200 mit Spielerinformationen oder HTTP-400 bei Fehlern
      */
     @PostMapping
-    public Player createPlayer(@RequestBody Player player) {
-        // Einfache Validierung
-        if (player.getUsername() == null || player.getUsername().trim().isEmpty()) {
-            throw new RuntimeException("Username is required");
-        }
-        if (player.getPasswordHash() == null || player.getPasswordHash().trim().isEmpty()) {
-            throw new RuntimeException("Password hash is required");
+    public ResponseEntity<PlayerResponse> createPlayer(@RequestBody CreatePlayerRequest request) {
+        // Prüfen ob Username bereits existiert
+        if (playerRepository.findByUsername(request.getUsername()).isPresent()) {
+            return ResponseEntity.badRequest().build();
         }
 
-        return playerRepository.save(player);
+        // Neuen Spieler erstellen
+        Player player = new Player();
+        player.setUsername(request.getUsername());
+        player.setPasswordHash(request.getPassword()); // In echten Applikationen hashen!
+        player.setProfileImageUrl(request.getProfileImageUrl());
+        player.setTotalGames(0);
+        player.setGamesWon(0);
+        player.setGamesLost(0);
+        player.setHighscore(0);
+
+        Player savedPlayer = playerRepository.save(player);
+
+        // Response erstellen
+        PlayerResponse response = new PlayerResponse();
+        response.setId(savedPlayer.getId());
+        response.setUsername(savedPlayer.getUsername());
+        response.setProfileImageUrl(savedPlayer.getProfileImageUrl());
+        response.setTotalGames(savedPlayer.getTotalGames());
+        response.setGamesWon(savedPlayer.getGamesWon());
+        response.setGamesLost(savedPlayer.getGamesLost());
+        response.setHighscore(savedPlayer.getHighscore());
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Ruft alle Spieler aus der Datenbank ab.
+     *
+     * <p>Die Spieler werden in eine Liste von {@link PlayerResponse} Objekten
+     * konvertiert, um nur relevante Informationen zurückzugeben.</p>
+     *
+     * @return Liste aller Spieler als {@link PlayerResponse}
+     */
+    @GetMapping
+    public List<PlayerResponse> getAllPlayers() {
+        return playerRepository.findAll().stream()
+                .map(this::convertToResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Ruft einen einzelnen Spieler anhand seiner ID ab.
+     *
+     * <p>Falls der Spieler nicht existiert, wird ein {@code 404 Not Found}
+     * zurückgegeben.</p>
+     *
+     * @param id ID des gewünschten Spielers
+     * @return HTTP-200 mit Spielerinformationen oder HTTP-404 wenn nicht gefunden
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<PlayerResponse> getPlayerById(@PathVariable Long id) {
+        return playerRepository.findById(id)
+                .map(this::convertToResponse)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
+    }
+
+    /**
+     * Konvertiert ein {@link Player}-Entity in ein {@link PlayerResponse}-DTO.
+     *
+     * <p>Diese Hilfsmethode stellt sicher, dass nur benötigte Daten an das
+     * Frontend zurückgegeben werden.</p>
+     *
+     * @param player Spieler-Entity aus der Datenbank
+     * @return Konvertierte {@link PlayerResponse}-Darstellung
+     */
+    private PlayerResponse convertToResponse(Player player) {
+        PlayerResponse response = new PlayerResponse();
+        response.setId(player.getId());
+        response.setUsername(player.getUsername());
+        response.setProfileImageUrl(player.getProfileImageUrl());
+        response.setTotalGames(player.getTotalGames());
+        response.setGamesWon(player.getGamesWon());
+        response.setGamesLost(player.getGamesLost());
+        response.setHighscore(player.getHighscore());
+        return response;
     }
 }

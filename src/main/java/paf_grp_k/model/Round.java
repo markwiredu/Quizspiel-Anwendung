@@ -1,6 +1,8 @@
 package paf_grp_k.model;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * Repräsentiert eine einzelne Runde innerhalb eines Spiels.
@@ -8,6 +10,8 @@ import jakarta.persistence.*;
  * und die zugehörige Frage.
  */
 @Entity
+@Getter
+@Setter
 @Table(name = "rounds")
 public class Round {
 
@@ -56,33 +60,4 @@ public class Round {
     @ManyToOne
     @JoinColumn(name = "question_id")
     private Question question;
-
-
-    // -----------------------------------------------------
-    // Getter und Setter mit JavaDoc
-    // -----------------------------------------------------
-
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-
-    public int getRoundNumber() { return roundNumber; }
-    public void setRoundNumber(int roundNumber) { this.roundNumber = roundNumber; }
-
-    public String getAnswerPlayer1() { return answerPlayer1; }
-    public void setAnswerPlayer1(String answerPlayer1) { this.answerPlayer1 = answerPlayer1; }
-
-    public String getAnswerPlayer2() { return answerPlayer2; }
-    public void setAnswerPlayer2(String answerPlayer2) { this.answerPlayer2 = answerPlayer2; }
-
-    public int getPointsPlayer1() { return pointsPlayer1; }
-    public void setPointsPlayer1(int pointsPlayer1) { this.pointsPlayer1 = pointsPlayer1; }
-
-    public int getPointsPlayer2() { return pointsPlayer2; }
-    public void setPointsPlayer2(int pointsPlayer2) { this.pointsPlayer2 = pointsPlayer2; }
-
-    public Game getGame() { return game; }
-    public void setGame(Game game) { this.game = game; }
-
-    public Question getQuestion() { return question; }
-    public void setQuestion(Question question) { this.question = question; }
 }

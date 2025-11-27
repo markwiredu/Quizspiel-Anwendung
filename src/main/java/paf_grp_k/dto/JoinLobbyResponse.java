@@ -1,5 +1,12 @@
 package paf_grp_k.dto;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Getter
+@Setter
+@NoArgsConstructor
 public class JoinLobbyResponse {
     private String status;
     private Long gameId;
@@ -10,14 +17,4 @@ public class JoinLobbyResponse {
         this.gameId = gameId;
         this.message = message;
     }
-
-    // Getter und Setter
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
-
-    public Long getGameId() { return gameId; }
-    public void setGameId(Long gameId) { this.gameId = gameId; }
-
-    public String getMessage() { return message; }
-    public void setMessage(String message) { this.message = message; }
 }

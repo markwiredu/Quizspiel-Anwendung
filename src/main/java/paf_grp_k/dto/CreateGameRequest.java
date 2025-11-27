@@ -1,22 +1,18 @@
 package paf_grp_k.dto;
 
+import lombok.*;
+import jakarta.validation.constraints.NotNull;
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class CreateGameRequest {
+
+    @NotNull(message = "Player 1 ID darf nicht null sein")
     private Long player1Id;
+
+    @NotNull(message = "Player 2 ID darf nicht null sein")
     private Long player2Id;
-
-    public Long getPlayer1Id() {
-        return player1Id;
-    }
-
-    public void setPlayer1Id(Long player1Id) {
-        this.player1Id = player1Id;
-    }
-
-    public Long getPlayer2Id() {
-        return player2Id;
-    }
-
-    public void setPlayer2Id(Long player2Id) {
-        this.player2Id = player2Id;
-    }
 }

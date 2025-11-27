@@ -8,7 +8,7 @@ import paf_grp_k.model.Question;
 import paf_grp_k.repository.GameRepository;
 import paf_grp_k.repository.PlayerRepository;
 import paf_grp_k.repository.QuestionRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -24,31 +24,28 @@ import java.util.*;
  * Verwaltet temporäre Warteschlangen für Spieler-Matching und startet Spiele/Runden.</p>
  */
 @Controller
+@RequiredArgsConstructor
 public class GameWebSocketController {
 
     /**
      * Template zum Versenden von Nachrichten an Clients.
      */
-    @Autowired
-    private SimpMessagingTemplate messagingTemplate;
+    private final SimpMessagingTemplate messagingTemplate;
 
     /**
      * Repository für Spieler-Entitäten.
      */
-    @Autowired
-    private PlayerRepository playerRepository;
+    private final PlayerRepository playerRepository;
 
     /**
      * Repository für Spiel-Entitäten.
      */
-    @Autowired
-    private GameRepository gameRepository;
+    private final GameRepository gameRepository;
 
     /**
      * Repository für Frage-Entitäten.
      */
-    @Autowired
-    private QuestionRepository questionRepository;
+    private final QuestionRepository questionRepository;
 
     /**
      * Lobby-Warteschlangen nach Kategorie für das Spieler-Matching.
