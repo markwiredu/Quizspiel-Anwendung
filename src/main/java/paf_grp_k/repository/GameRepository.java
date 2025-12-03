@@ -5,6 +5,10 @@ import paf_grp_k.model.GameStatus;
 import paf_grp_k.model.Player;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 /**
  * Repository für Game-Entities.
@@ -32,6 +36,18 @@ public interface GameRepository extends JpaRepository<Game, Long> {
      */
     List<Game> findByStatus(GameStatus status);
 
+    List<Game> findByPlayer1IdOrPlayer2Id(Long player1Id, Long player2Id);
+
+
+    /**
+     * Finde aktive Spiele eines Spielers (nicht beendet)
+     */
+    @Query("SELECT g FROM Game g WHERE (g.player1.id = :playerId OR g.player2.id = :playerId) " +
+            "AND g.status != 'FINISHED'")
+    List<Game> findActiveGamesByPlayerId(@Param("playerId") Long playerId);
+
+
+
     /**
      * Findet Spiele eines bestimmten Spielers mit einem bestimmten Status.
      * <p>
@@ -51,4 +67,22 @@ public interface GameRepository extends JpaRepository<Game, Long> {
      */
     List<Game> findByPlayer1AndStatusOrPlayer2AndStatus(Player player1, GameStatus status1,
                                                         Player player2, GameStatus status2);
+
+    /**
+     * Finde Spiel wo beide Spieler matched sind
+     */
+    Optional<Game> findByPlayer1IdAndPlayer2IdAndStatus(Long player1Id, Long player2Id, GameStatus status);
+
+    /**
+     * Zähle Siege eines Spielers
+     */
+    @Query("SELECT COUNT(g) FROM Game g WHERE g.winner.id = :playerId")
+    int countWinsByPlayerId(@Param("playerId") Long playerId);
+
+    /**
+     * Finde das letzte Spiel eines Spielers
+     */
+    @Query("SELECT g FROM Game g WHERE (g.player1.id = :playerId OR g.player2.id = :playerId) " +
+            "ORDER BY g.startTime DESC LIMIT 1")
+    Optional<Game> findLatestGameByPlayerId(@Param("playerId") Long playerId);
 }

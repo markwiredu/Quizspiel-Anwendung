@@ -49,6 +49,8 @@ public class Game {
      */
     private int scorePlayer2 = 0;
 
+    private String category = "ALL";
+
     /**
      * Spieler 1 des Spiels.
      */
