@@ -2,7 +2,6 @@ package paf_grp_k.controller;
 
 import paf_grp_k.dto.*;
 import paf_grp_k.model.Game;
-import paf_grp_k.model.GameStatus;
 import paf_grp_k.model.Player;
 import paf_grp_k.model.Question;
 import paf_grp_k.repository.GameRepository;
@@ -20,18 +19,52 @@ import java.util.*;
 
 /**
  * WebSocket-Controller für das QuizDuell-Spiel.
+ * <p>
+ * Dieser Controller verarbeitet WebSocket-Nachrichten für Lobby-Management,
+ * Matchmaking, Spielstart, Rundensteuerung und Spielerantworten.
  */
 @Controller
 @RequiredArgsConstructor
 public class GameWebSocketController {
 
+    /**
+     * Template zum Senden von WebSocket-Nachrichten an Benutzer oder Topics.
+     */
     private final SimpMessagingTemplate messagingTemplate;
+
+    /**
+     * Repository für Spielerzugriffe.
+     */
     private final PlayerRepository playerRepository;
+
+    /**
+     * Repository für Spiele.
+     */
     private final GameRepository gameRepository;
+
+    /**
+     * Repository für Fragen.
+     */
     private final QuestionRepository questionRepository;
+
+    /**
+     * Service zur Verwaltung der Lobby und des Matchmakings.
+     */
     private final LobbyService lobbyService;
+
+    /**
+     * Service zur Spiellogik (Spielstart, Runden, Spielende).
+     */
     private final GameService gameService;
 
+    /**
+     * WebSocket-Endpunkt zum Beitreten einer Lobby.
+     * <p>
+     * Der Spieler wird einer Lobby (optional mit Kategorie) hinzugefügt.
+     * Anschließend wird geprüft, ob ein Match zustande kommt.
+     *
+     * @param request JoinLobbyRequest mit Spieler-ID und Kategorie
+     */
     @MessageMapping("/game.join")
     public void joinLobby(@Payload JoinLobbyRequest request) {
         Player player = playerRepository.findById(request.getPlayerId())
@@ -39,7 +72,6 @@ public class GameWebSocketController {
 
         String category = request.getCategory() != null ? request.getCategory() : "ALL";
 
-        // ACHTUNG: Jetzt LobbyStatusDTO statt LobbyStatus
         LobbyStatusDTO lobbyStatus = lobbyService.joinLobby(request.getPlayerId(), category);
 
         messagingTemplate.convertAndSendToUser(
@@ -51,11 +83,15 @@ public class GameWebSocketController {
         checkForMatchAndStartGame(category);
     }
 
+    /**
+     * WebSocket-Endpunkt zum Verlassen der Lobby.
+     *
+     * @param request JoinLobbyRequest mit Spieler-ID und Kategorie
+     */
     @MessageMapping("/game.leave")
     public void leaveLobby(@Payload JoinLobbyRequest request) {
         lobbyService.leaveLobby(request.getPlayerId(), request.getCategory());
 
-        // ACHTUNG: Jetzt LobbyStatusDTO
         LobbyStatusDTO status = new LobbyStatusDTO("LEFT", "Lobby verlassen");
         messagingTemplate.convertAndSendToUser(
                 request.getPlayerId().toString(),
@@ -64,11 +100,17 @@ public class GameWebSocketController {
         );
     }
 
+    /**
+     * WebSocket-Endpunkt zum Absenden einer Spielerantwort.
+     * <p>
+     * Die Antwort wird bestätigt und anschließend an alle Spielteilnehmer
+     * über ein Topic gesendet.
+     *
+     * @param request PlayerAnswerRequest mit Antwortdaten
+     */
     @MessageMapping("/game.answer")
     public void submitAnswer(@Payload PlayerAnswerRequest request) {
         try {
-            System.out.println("Spieler " + request.getPlayerId() + " antwortet: " + request.getSelectedAnswer());
-
             messagingTemplate.convertAndSendToUser(
                     request.getPlayerId().toString(),
                     "/queue/game.answer.confirm",
@@ -95,6 +137,11 @@ public class GameWebSocketController {
         }
     }
 
+    /**
+     * Prüft, ob in der Lobby ein Match entstanden ist, und startet ggf. ein Spiel.
+     *
+     * @param category Spielkategorie
+     */
     private void checkForMatchAndStartGame(String category) {
         Optional<LobbyService.MatchResult> matchOpt = lobbyService.checkForMatch(category);
 
@@ -107,13 +154,19 @@ public class GameWebSocketController {
                 startGameWithDelay(game);
 
             } catch (Exception e) {
-                System.err.println("Fehler beim Spielstart: " + e.getMessage());
                 lobbyService.joinLobby(match.player1Id, category);
                 lobbyService.joinLobby(match.player2Id, category);
             }
         }
     }
 
+    /**
+     * Informiert beide Spieler über ein erfolgreiches Match.
+     *
+     * @param game       Das erstellte Spiel
+     * @param player1Id  ID von Spieler 1
+     * @param player2Id  ID von Spieler 2
+     */
     private void notifyPlayersAboutMatch(Game game, Long player1Id, Long player2Id) {
         Player player1 = playerRepository.findById(player1Id).orElseThrow();
         Player player2 = playerRepository.findById(player2Id).orElseThrow();
@@ -128,15 +181,18 @@ public class GameWebSocketController {
         messagingTemplate.convertAndSendToUser(player2Id.toString(), "/queue/game.match", message2);
     }
 
+    /**
+     * Startet das Spiel nach einem Countdown in einem separaten Thread.
+     *
+     * @param game Das zu startende Spiel
+     */
     private void startGameWithDelay(Game game) {
         new Thread(() -> {
             try {
-                // Countdown
                 for (int i = 5; i > 0; i--) {
                     Map<String, Object> countdownMessage = new HashMap<>();
                     countdownMessage.put("type", "COUNTDOWN");
                     countdownMessage.put("seconds", i);
-                    countdownMessage.put("message", "Spiel startet in " + i + " Sekunden...");
 
                     messagingTemplate.convertAndSendToUser(
                             game.getPlayer1().getId().toString(),
@@ -152,50 +208,25 @@ public class GameWebSocketController {
                     Thread.sleep(1000);
                 }
 
-                // Spiel starten
                 gameService.startGame(game.getId());
-
-                // GameStartMessage senden
-                GameStartMessage startMessage1 = new GameStartMessage(
-                        game.getId(),
-                        game.getPlayer2().getId(),
-                        game.getPlayer2().getUsername()
-                );
-                GameStartMessage startMessage2 = new GameStartMessage(
-                        game.getId(),
-                        game.getPlayer1().getId(),
-                        game.getPlayer1().getUsername()
-                );
-
-                messagingTemplate.convertAndSendToUser(
-                        game.getPlayer1().getId().toString(),
-                        "/queue/game.start",
-                        startMessage1
-                );
-                messagingTemplate.convertAndSendToUser(
-                        game.getPlayer2().getId().toString(),
-                        "/queue/game.start",
-                        startMessage2
-                );
-
-                // Erste Runde starten
                 startNewRound(game, 1);
 
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                System.err.println("Countdown unterbrochen: " + e.getMessage());
             } catch (Exception e) {
-                System.err.println("Fehler beim Spielstart: " + e.getMessage());
+                Thread.currentThread().interrupt();
             }
         }).start();
     }
 
+    /**
+     * Startet eine neue Spielrunde und sendet eine Frage an alle Spieler.
+     *
+     * @param game        Aktuelles Spiel
+     * @param roundNumber Nummer der Runde
+     */
     private void startNewRound(Game game, int roundNumber) {
         try {
-            // Runde erstellen
             gameService.startNewRound(game.getId(), roundNumber);
 
-            // Frage holen
             List<Question> questions = questionRepository.findRandomQuestionsByCategory(
                     game.getCategory(), 1
             );
@@ -209,24 +240,25 @@ public class GameWebSocketController {
                 return;
             }
 
-            Question question = questions.get(0);
-
-            // Runden-Start senden
             Map<String, Object> roundMessage = new HashMap<>();
             roundMessage.put("type", "ROUND_START");
             roundMessage.put("roundNumber", roundNumber);
-            roundMessage.put("question", question);
+            roundMessage.put("question", questions.get(0));
             roundMessage.put("timeLimit", 30000);
-            roundMessage.put("gameId", game.getId());
 
             messagingTemplate.convertAndSend("/topic/game." + game.getId(), roundMessage);
 
         } catch (Exception e) {
-            System.err.println("Fehler beim Rundenstart: " + e.getMessage());
-            endGame(game, "Fehler beim Rundenstart: " + e.getMessage());
+            endGame(game, "Fehler beim Rundenstart");
         }
     }
 
+    /**
+     * Beendet das Spiel und sendet die Endergebnisse an alle Spieler.
+     *
+     * @param game    Das Spiel
+     * @param message Abschlussnachricht
+     */
     private void endGame(Game game, String message) {
         try {
             gameService.finishGame(game.getId());
@@ -234,17 +266,19 @@ public class GameWebSocketController {
             Map<String, Object> endMessage = new HashMap<>();
             endMessage.put("type", "GAME_END");
             endMessage.put("message", message);
-            endMessage.put("finalScorePlayer1", game.getScorePlayer1());
-            endMessage.put("finalScorePlayer2", game.getScorePlayer2());
-            endMessage.put("winnerId", game.getWinner() != null ? game.getWinner().getId() : null);
 
             messagingTemplate.convertAndSend("/topic/game." + game.getId(), endMessage);
 
-        } catch (Exception e) {
-            System.err.println("Fehler beim Spielende: " + e.getMessage());
+        } catch (Exception ignored) {
         }
     }
 
+    /**
+     * Konvertiert ein Player-Objekt in ein PlayerDTO.
+     *
+     * @param player Spieler
+     * @return PlayerDTO
+     */
     private PlayerDTO convertToPlayerDTO(Player player) {
         PlayerDTO dto = new PlayerDTO();
         dto.setId(player.getId());
