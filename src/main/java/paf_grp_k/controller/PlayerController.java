@@ -1,5 +1,6 @@
 package paf_grp_k.controller;
 
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import paf_grp_k.dto.CreatePlayerRequest;
 import paf_grp_k.dto.PlayerResponse;
 import paf_grp_k.model.Player;
@@ -23,6 +24,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PlayerController {
 
+    // BCryptPasswordEncoder wird von Spring automatisch bereitgestellt
+    private final BCryptPasswordEncoder passwordEncoder;
+
     private final PlayerRepository playerRepository;
 
     /**
@@ -45,7 +49,14 @@ public class PlayerController {
         // Neuen Spieler erstellen
         Player player = new Player();
         player.setUsername(request.getUsername());
-        player.setPasswordHash(request.getPassword()); // In echten Applikationen hashen!
+        /*player.setPasswordHash(request.getPassword()); // In echten Applikationen hashen!
+        Ersetzen durch:
+         */
+        // Passwort wird hier sicher gehasht gespeichert (kein Klartext!)
+        player.setPasswordHash(
+                passwordEncoder.encode(request.getPassword())
+        );
+
         player.setProfileImageUrl(request.getProfileImageUrl());
         player.setTotalGames(0);
         player.setGamesWon(0);
