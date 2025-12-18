@@ -10,11 +10,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 /**
  * Diese Klasse stellt einen Passwort-Encoder für das ganze Projekt bereit.
- *
  * Ziel:
  * - Passwörter werden NICHT im Klartext gespeichert
  * - Stattdessen werden sie sicher gehasht (BCrypt)
- *
  * Diese Konfiguration wird beim Start der Anwendung von Spring geladen.
  */
 
