@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class JoinLobbyRequest {
     private Long playerId;
+    private String username;
     private String category;
 
 

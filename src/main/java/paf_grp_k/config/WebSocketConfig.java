@@ -5,44 +5,34 @@ import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import paf_grp_k.websocket.WebSocketHandshakeHandler;
 
-/**
- * Konfiguriert WebSocket und STOMP-Messaging für das QuizDuell-Projekt.
- *
- * <p>Ermöglicht bidirektionale Kommunikation zwischen Client und Server
- * über WebSockets und bietet Fallbacks für Browser ohne WebSocket-Unterstützung.</p>
- */
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
-    /**
-     * Konfiguriert den Message Broker für STOMP-Nachrichten.
-     *
-     * @param config MessageBrokerRegistry zum Einrichten von Präfixen
-     */
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
-        // Präfix für Nachrichten, die an den Server gesendet werden
-        config.setApplicationDestinationPrefixes("/app");
+        config.enableSimpleBroker("/topic", "/queue");  // Topics & Queues für Broadcast und User
+        config.setApplicationDestinationPrefixes("/app");  // @MessageMapping Prefix
+        config.setUserDestinationPrefix("/user");         // convertAndSendToUser Prefix
 
-        // Präfixe für Nachrichten, die an Clients gesendet werden
-        config.enableSimpleBroker("/topic", "/queue");
-
-        // Präfix für private Nachrichten an bestimmte Benutzer
-        config.setUserDestinationPrefix("/user");
+        System.out.println("✅ Message Broker konfiguriert: /topic, /queue, /app, /user");
     }
 
-    /**
-     * Registriert den STOMP-Endpunkt für WebSocket-Verbindungen.
-     *
-     * @param registry StompEndpointRegistry zum Hinzufügen von Endpunkten
-     */
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // WebSocket-Endpunkt für Clients
+        // Endpoint mit SockJS
         registry.addEndpoint("/quiz-websocket")
-                .setAllowedOriginPatterns("*") // erlaubt Cross-Origin-Anfragen
-                .withSockJS(); // Fallback für Browser ohne WebSocket-Unterstützung
+                .setAllowedOriginPatterns("*")
+                .setHandshakeHandler(new WebSocketHandshakeHandler())
+                .withSockJS();
+
+        // Optionaler Endpoint ohne SockJS für moderne Browser
+        registry.addEndpoint("/quiz-websocket")
+                .setAllowedOriginPatterns("*")
+                .setHandshakeHandler(new WebSocketHandshakeHandler());
+
+        System.out.println("✅ STOMP Endpoints registriert: /quiz-websocket");
     }
 }

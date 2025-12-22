@@ -18,14 +18,25 @@
             max-width: 500px;
             width: 100%;
         }
-        .status-waiting { color: #856404; background-color: #fff3cd; border-color: #ffeaa7; }
-        .status-matched { color: #155724; background-color: #d4edda; border-color: #c3e6cb; }
-        .status-starting { color: #004085; background-color: #cce5ff; border-color: #b8daff; }
+        .status-waiting {
+            color: #856404;
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+            animation: pulseStatus 2s infinite;
+        }
+        .status-matched {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            animation: pulseSuccess 1s infinite;
+        }
         .player-avatar {
             width: 60px;
             height: 60px;
             border-radius: 50%;
             object-fit: cover;
+            border: 3px solid white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         }
         .queue-animation {
             animation: pulse 2s infinite;
@@ -35,6 +46,82 @@
             50% { opacity: 0.7; }
             100% { opacity: 1; }
         }
+        @keyframes pulseStatus {
+            0% { background-color: #fff3cd; }
+            50% { background-color: #ffeaa7; }
+            100% { background-color: #fff3cd; }
+        }
+        @keyframes pulseSuccess {
+            0% { background-color: #d4edda; }
+            50% { background-color: #c3e6cb; }
+            100% { background-color: #d4edda; }
+        }
+        .notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            min-width: 300px;
+        }
+        .live-player-card {
+            border: 2px solid #4e73df;
+            border-radius: 10px;
+            padding: 10px;
+            margin: 5px 0;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            transition: all 0.3s ease;
+        }
+        .live-player-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .avatar-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #ffc107;
+            color: #000;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .progress {
+            height: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+        .progress-bar {
+            transition: width 0.5s ease;
+            font-weight: bold;
+        }
+        .player-counter {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4e73df;
+            margin: 0 10px;
+        }
+        .blink {
+            animation: blink 1s infinite;
+        }
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        .player-join-animation {
+            animation: playerJoin 0.5s ease-out;
+        }
+        @keyframes playerJoin {
+            0% { transform: scale(0.8); opacity: 0; }
+            70% { transform: scale(1.05); }
+            100% { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -42,18 +129,18 @@
     <div class="card lobby-card p-4 shadow">
         <!-- Header -->
         <div class="text-center mb-4">
-            <h3>🎮 QuizDuell Lobby</h3>
+            <h3 class="text-primary">🎮 QuizDuell Lobby</h3>
             <p class="text-muted">Finde einen Gegner und starte das Spiel!</p>
         </div>
 
         <!-- Spieler Info -->
-        <div id="playerInfo" class="alert alert-info d-none">
-            <strong>Eingeloggt als:</strong> <span id="currentPlayerName">-</span>
+        <div id="playerInfo" class="alert alert-info">
+            <strong>👤 Eingeloggt als:</strong> <span id="currentPlayerName">-</span>
         </div>
 
         <!-- Kategorie Auswahl -->
         <div class="mb-4">
-            <label class="form-label"><strong>Wähle eine Kategorie:</strong></label>
+            <label class="form-label"><strong>🎯 Wähle eine Kategorie:</strong></label>
             <select class="form-select" id="categorySelect">
                 <option value="ALL">Alle Kategorien</option>
                 <option value="GEOGRAPHY">🌍 Geographie</option>
@@ -63,10 +150,41 @@
             </select>
         </div>
 
-        <!-- Lobby Status -->
-        <div id="lobbyStatus" class="alert alert-secondary text-center">
-            <h5>👥 Warte auf Spielstart</h5>
-            <p class="mb-0">Wähle eine Kategorie und betrete die Lobby</p>
+        <!-- Live Lobby Status -->
+        <div id="lobbyStatusContainer" class="mb-4">
+            <div id="lobbyStatus" class="alert alert-secondary text-center">
+                <h5>👥 Warte auf Spielstart</h5>
+                <p class="mb-0">Wähle eine Kategorie und betrete die Lobby</p>
+            </div>
+
+            <!-- Live Player Counter -->
+            <div id="livePlayerCounter" class="text-center mb-3 d-none">
+                <div class="d-flex align-items-center justify-content-center">
+                    <span class="player-counter blink" id="playerCount">0</span>
+                    <span class="ms-2">Spieler in Lobby</span>
+                </div>
+                <div class="progress">
+                    <div id="matchProgress" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                         role="progressbar" style="width: 0%">
+                        <span id="progressText">0%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Spieler Liste -->
+        <div id="livePlayersContainer" class="card mb-3 d-none">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">👥 Aktive Spieler in Lobby</h6>
+                <span id="livePlayerCount" class="badge bg-warning">0</span>
+            </div>
+            <div id="playersList" class="card-body">
+                <!-- Spieler werden hier dynamisch geladen -->
+                <div id="noPlayersMessage" class="text-center text-muted">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span class="ms-2">Lade Spieler...</span>
+                </div>
+            </div>
         </div>
 
         <!-- Lobby Actions -->
@@ -83,10 +201,13 @@
         <div id="queueInfo" class="card mb-3 d-none">
             <div class="card-body text-center">
                 <div class="queue-animation">
-                    <h5>🔍 Suche nach Gegner...</h5>
-                    <div id="queuePosition" class="mb-2"></div>
-                    <div class="spinner-border text-primary" role="status">
+                    <h5 class="text-warning">🔍 Suche nach Gegner...</h5>
+                    <div id="queuePosition" class="mb-2 fs-5"></div>
+                    <div class="spinner-border text-primary mt-3" role="status">
                         <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted">💡 Tipp: Je mehr Spieler online sind, desto schneller findet sich ein Match!</small>
                     </div>
                 </div>
             </div>
@@ -97,7 +218,13 @@
             <div class="card-body text-center">
                 <h5 class="text-success">🎉 Gegner gefunden!</h5>
                 <div id="opponentInfo" class="my-3"></div>
-                <p>Spiel startet in <span id="countdown">5</span> Sekunden...</p>
+                <div class="countdown-container">
+                    <p>Spiel startet in <span id="countdown" class="fw-bold fs-4">5</span> Sekunden...</p>
+                    <div class="progress mt-2" style="height: 10px;">
+                        <div id="countdownProgress" class="progress-bar bg-danger"
+                             role="progressbar" style="width: 100%"></div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -108,237 +235,365 @@
     </div>
 </div>
 
+<!-- Notification Container -->
+<div id="notificationContainer" class="notification-container"></div>
+
 <script>
-    // Global variables
     let stompClient = null;
     let currentPlayer = null;
     let currentCategory = 'ALL';
     let isInLobby = false;
     let gameStartCountdown = null;
+    let lobbyUpdateInterval = null;
+    let currentGameId = null;
 
     // Page loaded
     window.onload = function() {
-        // Load current player from localStorage
-        loadCurrentPlayer();
-        // Initialize WebSocket connection
-        connectWebSocket();
+        console.log('🚀 Lobby Seite geladen');
 
-        // Event Listener für Buttons
-        document.getElementById('joinLobbyBtn').addEventListener('click', joinLobby);
-        document.getElementById('leaveLobbyBtn').addEventListener('click', leaveLobby);
+        loadCurrentPlayer();
+        connectWebSocket();
+        initializeEventListeners();
     };
 
     // Load current player from localStorage
     function loadCurrentPlayer() {
         const savedPlayer = localStorage.getItem('currentPlayer');
         if (savedPlayer) {
-            currentPlayer = JSON.parse(savedPlayer);
-            document.getElementById('currentPlayerName').textContent = currentPlayer.username;
-            document.getElementById('playerInfo').classList.remove('d-none');
-        } else {
-            // Redirect to login if no player is set
-            alert('Bitte erst registrieren oder anmelden!');
-            window.location.href = '/signup.html';
+            try {
+                currentPlayer = JSON.parse(savedPlayer);
+                if (currentPlayer?.username) {
+                    document.getElementById('currentPlayerName').textContent = currentPlayer.username;
+                    console.log('👤 Spieler geladen:', currentPlayer.username);
+                }
+            } catch (e) {
+                console.error('Fehler beim Laden des Spielers:', e);
+            }
         }
     }
 
-    // WebSocket connection
+    // Initialize event listeners
+    function initializeEventListeners() {
+        document.getElementById('joinLobbyBtn').addEventListener('click', joinLobby);
+        document.getElementById('leaveLobbyBtn').addEventListener('click', leaveLobby);
+        document.getElementById('categorySelect').addEventListener('change', handleCategoryChange);
+    }
+
+    // Handle category change
+    function handleCategoryChange() {
+        if (isInLobby) {
+            showNotification('🔄 Kategorie geändert - Lobby wird aktualisiert');
+            leaveLobby();
+            setTimeout(joinLobby, 500);
+        }
+    }
+
+    // Connect WebSocket with Principal support
     function connectWebSocket() {
-        const socket = new SockJS('/quiz-websocket');
+        console.log('🔌 Starte WebSocket Verbindung...');
+        const wsUrl = '/quiz-websocket';
+        const socket = new SockJS(wsUrl);
         stompClient = Stomp.over(socket);
 
-        stompClient.connect({}, function(frame) {
-            console.log('✅ WebSocket connected for Lobby');
+        stompClient.debug = function(str) {
+            console.log('🔍 STOMP DEBUG:', str);
+        };
 
-            // Subscribe to lobby status updates
-            stompClient.subscribe('/user/queue/lobby.status', function(message) {
-                const lobbyStatus = JSON.parse(message.body);
-                updateLobbyStatus(lobbyStatus);
-            });
+        const connectHeaders = {};
+        stompClient.connect(connectHeaders, function(frame) {
+            console.log('✅ WebSocket verbunden!', frame);
 
-            // Subscribe to game match notifications
-            stompClient.subscribe('/user/queue/game.match', function(message) {
-                const gameMatch = JSON.parse(message.body);
-                handleGameMatch(gameMatch);
-            });
-
-            // Subscribe to game start
-            stompClient.subscribe('/user/queue/game.start', function(message) {
-                const gameStart = JSON.parse(message.body);
-                startGame(gameStart);
-            });
-
+            // Subscribe to user-specific lobby updates
+            subscribeToLobbyUpdates();
         }, function(error) {
-            console.error('WebSocket error:', error);
-            showError('Verbindungsfehler zur Lobby');
+            console.error('❌ WebSocket Fehler:', error);
         });
     }
 
+    // Subscribe to lobby updates (Principal-based)
+    function subscribeToLobbyUpdates() {
+        if (!stompClient || !stompClient.connected) return;
+
+        console.log('🎫 Subscribing to /user/queue/lobby.updates');
+        stompClient.subscribe('/user/queue/lobby.updates', function(message) {
+            const update = JSON.parse(message.body);
+            window.lastLobbyUpdate = update;
+            console.log('🎪 Lobby Update erhalten:', update);
+            handleLobbyUpdate(update);
+            updateLivePlayersDisplay(update);
+            updateQueuePosition(update.positionInQueue, update.playersInQueue);
+        });
+    }
+
+    stompClient.subscribe('/user/queue/game.match', msg => {
+    const match = JSON.parse(msg.body);
+    console.log('🎮 MATCH GEFUNDEN:', match);
+
+    localStorage.setItem('currentGame', JSON.stringify(match));
+
+    window.location.href = '/game.html?gameId=' + match.gameId;
+});
+
+
     // Join lobby
     function joinLobby() {
-        if (!stompClient || !stompClient.connected) {
-            showError('Keine WebSocket Verbindung');
-            return;
-        }
-
-        if (!currentPlayer) {
-            showError('Kein Spieler eingeloggt');
-            return;
-        }
-
-        currentCategory = document.getElementById('categorySelect').value;
-        isInLobby = true;
-
-        // Send join request
-        stompClient.send("/app/game.join", {}, JSON.stringify({
-            playerId: currentPlayer.id,
-            category: currentCategory
-        }));
-
-        // Update UI
-        document.getElementById('joinLobbyBtn').classList.add('d-none');
-        document.getElementById('leaveLobbyBtn').classList.remove('d-none');
-        document.getElementById('categorySelect').disabled = true;
-
-        showInfo('Lobby betreten... Suche nach Gegner');
+    // Prüfe, ob Spieler eingeloggt ist
+    if (!currentPlayer?.id || !currentPlayer?.username) {
+        alert('❌ Bitte erst einloggen!');
+        window.location.href = '/signup.html';
+        return;
     }
+
+    // Prüfe WebSocket-Verbindung
+    if (!stompClient || !stompClient.connected) {
+        alert('❌ Keine Verbindung zum Server');
+        return;
+    }
+
+    // Aktuelle Kategorie aus Dropdown
+    currentCategory = document.getElementById('categorySelect').value;
+
+    // Buttons und Dropdown UI anpassen
+    document.getElementById('joinLobbyBtn').classList.add('d-none');
+    document.getElementById('leaveLobbyBtn').classList.remove('d-none');
+    document.getElementById('categorySelect').disabled = true;
+
+    // Statusanzeige aktualisieren
+    updateLobbyStatus({ status: 'WAITING', message: 'Verbinde mit Lobby...' });
+    document.getElementById('queueInfo').classList.remove('d-none');
+
+    // Join-Nachricht an Backend senden mit Spieler-ID & Username
+    stompClient.send("/app/game.join", {}, JSON.stringify({
+        playerId: currentPlayer.id,
+        username: currentPlayer.username,
+        category: currentCategory
+    }));
+
+    // Lobby-Flag setzen
+    isInLobby = true;
+
+    // Notification anzeigen
+    showNotification('✅ Lobby betreten! Suche nach Gegner...');
+
+    console.log(`📤 Join Request gesendet für Spieler ${currentPlayer.username} in Kategorie ${currentCategory}`);
+}
 
     // Leave lobby
     function leaveLobby() {
-        if (stompClient && stompClient.connected && currentPlayer) {
-            stompClient.send("/app/game.leave", {}, JSON.stringify({
-                playerId: currentPlayer.id,
-                category: currentCategory
-            }));
-        }
+    if (stompClient?.connected && isInLobby && currentPlayer?.id) {
+        // Sende Spieler-ID + Kategorie an Server
+        stompClient.send("/app/game.leave", {}, JSON.stringify({
+            playerId: currentPlayer.id,
+            category: currentCategory
+        }));
+    }
 
-        resetLobbyUI();
-        showInfo('Lobby verlassen');
+    // UI zurücksetzen
+    resetLobbyUI();
+
+    // Notification anzeigen
+    showNotification('🚪 Lobby verlassen');
+
+    console.log(`📤 Spieler ${currentPlayer?.username || 'Unknown'} hat die Lobby verlassen`);
+}
+
+
+    // Handle incoming lobby update
+    function handleLobbyUpdate(update) {
+        console.log('🎪 LOBBY UPDATE EMPFANGEN:', update);
+        window.lastLobbyUpdate = update;
+
+        document.getElementById('playerCount').textContent = update.playersInQueue || 0;
+
+        const statusDiv = document.getElementById('lobbyStatus');
+        statusDiv.innerHTML = `
+            <h5>👥 ${update.playersInQueue || 0} Spieler in Lobby</h5>
+            <p>Deine Position: ${update.positionInQueue || 1}</p>
+            <p>Status: ${update.status || 'WAITING'}</p>
+            <p>Kategorie: ${update.category || 'ALL'}</p>
+        `;
+        statusDiv.className = 'alert alert-info text-center';
+
+        if (update.playersInQueue >= 2) {
+            showNotification('🎯 Match möglich!');
+        }
+    }
+
+    // Update live players display
+    function updateLivePlayersDisplay(update) {
+        const container = document.getElementById('livePlayersContainer');
+        const playersList = document.getElementById('playersList');
+        if (!container || !playersList) return;
+
+        container.classList.toggle('d-none', !isInLobby);
+
+        let html = '';
+        for (let i = 0; i < update.playersInQueue; i++) {
+            const isCurrent = (i + 1) === update.positionInQueue;
+            html += `
+                <div class="live-player-card ${isCurrent ? 'player-join-animation' : ''}">
+                    <div class="d-flex align-items-center">
+                        <img src="${isCurrent ? (currentPlayer.profileImageUrl || '/images/default-avatar.jpg') : '/images/default-avatar.jpg'}"
+                             class="player-avatar me-3">
+                        <div>
+                            <h6>${isCurrent ? currentPlayer.username : 'Spieler ' + (i + 1)}
+                                <span class="badge ${isCurrent ? 'bg-info' : 'bg-secondary'} ms-1">
+                                    ${isCurrent ? 'Du' : 'Gegner'}
+                                </span>
+                            </h6>
+                            <small class="text-muted">${isCurrent ? 'Wartet auf Gegner...' : 'Such nach Match...'}</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        playersList.innerHTML = html;
+    }
+
+    // Update queue position
+    function updateQueuePosition(position, total) {
+        const queuePos = document.getElementById('queuePosition');
+        if (!queuePos) return;
+        queuePos.innerHTML = total > 0 ? `
+            <span class="badge bg-primary">🎯 Position ${position} von ${total}</span>
+            <small>${total - position} Spieler vor dir</small>
+        ` : '<span class="text-muted">Position wird berechnet...</span>';
     }
 
     // Update lobby status
-    function updateLobbyStatus(lobbyStatus) {
+    function updateLobbyStatus(status) {
         const statusDiv = document.getElementById('lobbyStatus');
-        const queueInfo = document.getElementById('queueInfo');
-        const queuePosition = document.getElementById('queuePosition');
+        if (!statusDiv) return;
 
-        statusDiv.className = 'alert ';
-        queueInfo.classList.add('d-none');
-
-        switch(lobbyStatus.status) {
+        switch(status.status) {
             case 'WAITING':
-                statusDiv.classList.add('status-waiting');
-                statusDiv.innerHTML = '<h5>⏳ In Warteschlange</h5><p>' + lobbyStatus.message + '</p>';
-
-                queueInfo.classList.remove('d-none');
-                queuePosition.innerHTML =
-                    '<strong>Position:</strong> ' + lobbyStatus.positionInQueue + '<br>' +
-                    '<strong>Spieler in Warteschlange:</strong> ' + lobbyStatus.totalPlayersInQueue;
+                statusDiv.className = 'alert status-waiting text-center';
+                statusDiv.innerHTML = `<h5>⏳ In Warteschlange</h5><p>${status.message || 'Suche Gegner...'}</p>`;
                 break;
-
             case 'MATCHED':
-                statusDiv.classList.add('status-matched');
-                statusDiv.innerHTML = '<h5>✅ Gegner gefunden!</h5><p>' + lobbyStatus.message + '</p>';
+                statusDiv.className = 'alert status-matched text-center';
+                statusDiv.innerHTML = `<h5>✅ Gegner gefunden!</h5><p>${status.message || 'Spiel startet gleich...'}</p>`;
                 break;
-
-            case 'GAME_STARTING':
-                statusDiv.classList.add('status-starting');
-                statusDiv.innerHTML = '<h5>🚀 Spiel startet...</h5><p>' + lobbyStatus.message + '</p>';
-                break;
-
             default:
-                statusDiv.classList.add('alert-secondary');
-                statusDiv.innerHTML = '<h5>👥 Warte auf Spielstart</h5><p>' + (lobbyStatus.message || 'Wähle eine Kategorie') + '</p>';
+                statusDiv.className = 'alert alert-secondary text-center';
+                statusDiv.innerHTML = `<h5>👥 Warte auf Spielstart</h5><p>${status.message || ''}</p>`;
         }
-    }
-
-    // Handle game match
-    function handleGameMatch(gameMatch) {
-        document.getElementById('matchInfo').classList.remove('d-none');
-        document.getElementById('queueInfo').classList.add('d-none');
-
-        const opponentInfo = document.getElementById('opponentInfo');
-        opponentInfo.innerHTML =
-            '<img src="' + (gameMatch.opponent.profileImageUrl || '/images/default-avatar.jpg') + '" ' +
-            'class="player-avatar mb-2" alt="' + gameMatch.opponent.username + '">' +
-            '<div><strong>' + gameMatch.opponent.username + '</strong></div>' +
-            '<small class="text-muted">Spiele: ' + gameMatch.opponent.totalGames + ' | Siege: ' + gameMatch.opponent.gamesWon + '</small>';
-
-        // Start countdown
-        let countdown = 5;
-        const countdownElement = document.getElementById('countdown');
-
-        gameStartCountdown = setInterval(function() {
-            countdown--;
-            countdownElement.textContent = countdown;
-
-            if (countdown <= 0) {
-                clearInterval(gameStartCountdown);
-                document.getElementById('matchInfo').innerHTML =
-                    '<div class="text-center">' +
-                    '<h5>🎮 Spiel startet!</h5>' +
-                    '<p>Weiterleitung zum Spiel...</p>' +
-                    '</div>';
-            }
-        }, 1000);
-    }
-
-    // Start game
-    function startGame(gameStart) {
-        // Save game info to localStorage
-        localStorage.setItem('currentGame', JSON.stringify(gameStart));
-
-        // Redirect to game page
-        setTimeout(function() {
-            window.location.href = '/game.html?gameId=' + gameStart.gameId;
-        }, 2000);
     }
 
     // Reset lobby UI
     function resetLobbyUI() {
         isInLobby = false;
-
         document.getElementById('joinLobbyBtn').classList.remove('d-none');
         document.getElementById('leaveLobbyBtn').classList.add('d-none');
         document.getElementById('categorySelect').disabled = false;
         document.getElementById('queueInfo').classList.add('d-none');
-        document.getElementById('matchInfo').classList.add('d-none');
+        document.getElementById('livePlayersContainer').classList.add('d-none');
+        updateLobbyStatus({ status: 'IDLE', message: 'Wähle eine Kategorie und betrete die Lobby' });
+        clearInterval(gameStartCountdown);
+        clearInterval(lobbyUpdateInterval);
+    }
 
-        document.getElementById('lobbyStatus').className = 'alert alert-secondary text-center';
-        document.getElementById('lobbyStatus').innerHTML =
-            '<h5>👥 Warte auf Spielstart</h5>' +
-            '<p class="mb-0">Wähle eine Kategorie und betrete die Lobby</p>';
+    // Show notification
+    function showNotification(message) {
+        const container = document.getElementById('notificationContainer');
+        if (!container) return;
+        const notification = document.createElement('div');
+        notification.className = 'alert alert-info alert-dismissible fade show mb-2';
+        notification.innerHTML = `${message}<button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>`;
+        container.appendChild(notification);
+        setTimeout(() => notification.remove(), 3000);
+    }
+ // Subscribe to game match updates
+function subscribeToGameMatch() {
+    if (!stompClient || !stompClient.connected) return;
 
-        if (gameStartCountdown) {
+    console.log('🎫 Subscribing to /user/queue/game.match');
+    stompClient.subscribe('/user/queue/game.match', function(message) {
+        const match = JSON.parse(message.body);
+        console.log('🎯 Game Match Update:', match);
+        handleGameMatch(match);
+    });
+}
+
+// Handle game match update
+function handleGameMatch(match) {
+    if (!match || !match.opponent) return;
+
+    // Clear previous countdown
+    if (gameStartCountdown) clearInterval(gameStartCountdown);
+
+    // Hide lobby, show match panel
+    document.getElementById('matchInfo').classList.remove('d-none');
+    document.getElementById('queueInfo').classList.add('d-none');
+    document.getElementById('livePlayersContainer').classList.add('d-none');
+
+    // Show opponent info
+    const opponentInfo = document.getElementById('opponentInfo');
+    opponentInfo.innerHTML = `
+        <div class="text-center">
+            <img src="${match.opponent.profileImageUrl || '/images/default-avatar.jpg'}"
+                 class="player-avatar mb-2">
+            <h5>${match.opponent.username}</h5>
+            <div class="row">
+                <div class="col-6">
+                    <small class="text-muted">Spiele: ${match.opponent.totalGames || 0}</small>
+                </div>
+                <div class="col-6">
+                    <small class="text-muted">Siege: ${match.opponent.gamesWon || 0}</small>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Start countdown (5 Sekunden)
+    let countdown = 5;
+    const countdownElement = document.getElementById('countdown');
+    const countdownProgress = document.getElementById('countdownProgress');
+    countdownElement.textContent = countdown;
+    countdownProgress.style.width = '100%';
+
+    gameStartCountdown = setInterval(() => {
+        countdown--;
+        countdownElement.textContent = countdown;
+        countdownProgress.style.width = (countdown * 20) + '%';
+
+        if (countdown <= 0) {
             clearInterval(gameStartCountdown);
+            startGame(match);
         }
-    }
+    }, 1000);
+}
 
-    // Helper functions
-    function showError(message) {
-        alert('❌ ' + message);
-    }
+// Start game and redirect
+function startGame(gameStart) {
+    console.log('🚀 Starte Spiel:', gameStart);
 
-    function showInfo(message) {
-        console.log('ℹ️ ' + message);
-    }
+    // Save current game info
+    localStorage.setItem('currentGame', JSON.stringify(gameStart));
 
-    // Category change
-    document.getElementById('categorySelect').addEventListener('change', function() {
-        if (isInLobby) {
-            showInfo('Kategorie geändert - Lobby wird aktualisiert');
-            leaveLobby();
-            setTimeout(joinLobby, 500);
+    // Redirect
+    window.location.href = '/game.html?gameId=' + gameStart.gameId;
+}
+
+// --- Initialize Subscriptions ---
+window.onload = function() {
+    console.log('🚀 Lobby Seite geladen');
+
+    loadCurrentPlayer();
+    connectWebSocket();
+    initializeEventListeners();
+
+    // Subscribe to both lobby and game updates after connection
+    const intervalCheck = setInterval(() => {
+        if (stompClient?.connected) {
+            subscribeToLobbyUpdates();
+            subscribeToGameMatch();
+            clearInterval(intervalCheck);
         }
-    });
+    }, 500);
+};
 
-    // Prevent page leave while in lobby
-    window.addEventListener('beforeunload', function(e) {
-        if (isInLobby) {
-            e.preventDefault();
-            e.returnValue = 'Bist du sicher, dass du die Lobby verlassen möchtest?';
-        }
-    });
 </script>
+
 </body>
 </html>
