@@ -1,8 +1,6 @@
 package paf_grp_k.service;
 
 import paf_grp_k.dto.LobbyStatusDTO;
-import paf_grp_k.model.Player;
-import paf_grp_k.repository.PlayerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -13,14 +11,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class LobbyService {
 
-    private final PlayerRepository playerRepository;
     private final Map<String, Queue<Long>> lobbyQueues = new ConcurrentHashMap<>();
 
-    /**
-     * Spieler zur Lobby hinzufügen
-     */
-    public LobbyStatusDTO joinLobby(Long playerId, String category) { // Rückgabetyp geändert
-        String lobbyCategory = category != null ? category : "ALL";
+    /* ===================== JOIN LOBBY ===================== */
+    public LobbyStatusDTO joinLobby(Long playerId, String category) {
+        String lobbyCategory = normalize(category);
 
         lobbyQueues.putIfAbsent(lobbyCategory, new LinkedList<>());
         Queue<Long> queue = lobbyQueues.get(lobbyCategory);
@@ -29,7 +24,7 @@ public class LobbyService {
             queue.add(playerId);
         }
 
-        int position = getPositionInQueue(playerId, lobbyCategory);
+        int position = getPositionInQueue(playerId, queue);
         int totalPlayers = queue.size();
 
         return new LobbyStatusDTO(
@@ -40,10 +35,42 @@ public class LobbyService {
         );
     }
 
-    private int getPositionInQueue(Long playerId, String category) {
-        Queue<Long> queue = lobbyQueues.get(category);
-        if (queue == null) return 0;
+    /* ===================== MATCHMAKING ===================== */
+    public Optional<MatchResult> checkForMatch(String category) {
+        String lobbyCategory = normalize(category);
+        Queue<Long> queue = lobbyQueues.get(lobbyCategory);
 
+        if (queue != null && queue.size() >= 2) {
+            Long player1Id = queue.poll();
+            Long player2Id = queue.poll();
+
+            return Optional.of(new MatchResult(player1Id, player2Id, lobbyCategory));
+        }
+        return Optional.empty();
+    }
+
+    /* ===================== LEAVE LOBBY ===================== */
+    public void leaveLobby(Long playerId, String category) {
+        String lobbyCategory = normalize(category);
+        Queue<Long> queue = lobbyQueues.get(lobbyCategory);
+
+        if (queue != null) {
+            queue.remove(playerId);
+            if (queue.isEmpty()) {
+                lobbyQueues.remove(lobbyCategory);
+            }
+        }
+    }
+
+    /* ===================== LOBBY INFO (WICHTIG!) ===================== */
+    public LobbyInfo getLobbyInfo(String category) {
+        String lobbyCategory = normalize(category);
+        Queue<Long> queue = lobbyQueues.getOrDefault(lobbyCategory, new LinkedList<>());
+        return new LobbyInfo(new ArrayList<>(queue));
+    }
+
+    /* ===================== HELPER ===================== */
+    private int getPositionInQueue(Long playerId, Queue<Long> queue) {
         int position = 1;
         for (Long id : queue) {
             if (id.equals(playerId)) {
@@ -54,22 +81,18 @@ public class LobbyService {
         return 0;
     }
 
-    public Optional<MatchResult> checkForMatch(String category) {
-        Queue<Long> queue = lobbyQueues.get(category);
-        if (queue != null && queue.size() >= 2) {
-            Long player1Id = queue.poll();
-            Long player2Id = queue.poll();
-
-            return Optional.of(new MatchResult(player1Id, player2Id, category));
-        }
-        return Optional.empty();
+    private String normalize(String category) {
+        return category != null ? category : "ALL";
     }
 
-    public void leaveLobby(Long playerId, String category) {
-        String lobbyCategory = category != null ? category : "ALL";
-        Queue<Long> queue = lobbyQueues.get(lobbyCategory);
-        if (queue != null) {
-            queue.remove(playerId);
+    /* ===================== DTOs ===================== */
+    public static class LobbyInfo {
+        public final List<Long> playerIds;
+        public final int playerCount;
+
+        public LobbyInfo(List<Long> playerIds) {
+            this.playerIds = playerIds;
+            this.playerCount = playerIds.size();
         }
     }
 

@@ -10,275 +10,204 @@ import paf_grp_k.repository.QuestionRepository;
 import paf_grp_k.service.GameService;
 import paf_grp_k.service.LobbyService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.annotation.SendToUser;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Controller;
+import paf_grp_k.util.CategoryUtil;
 
+import java.security.Principal;
 import java.util.*;
 
-/**
- * WebSocket-Controller für das QuizDuell-Spiel.
- * <p>
- * Dieser Controller verarbeitet WebSocket-Nachrichten für Lobby-Management,
- * Matchmaking, Spielstart, Rundensteuerung und Spielerantworten.
- */
 @Controller
 @RequiredArgsConstructor
 public class GameWebSocketController {
 
-    /**
-     * Template zum Senden von WebSocket-Nachrichten an Benutzer oder Topics.
-     */
+    private static final Logger log = LoggerFactory.getLogger(GameWebSocketController.class);
+
     private final SimpMessagingTemplate messagingTemplate;
-
-    /**
-     * Repository für Spielerzugriffe.
-     */
     private final PlayerRepository playerRepository;
-
-    /**
-     * Repository für Spiele.
-     */
     private final GameRepository gameRepository;
-
-    /**
-     * Repository für Fragen.
-     */
     private final QuestionRepository questionRepository;
-
-    /**
-     * Service zur Verwaltung der Lobby und des Matchmakings.
-     */
     private final LobbyService lobbyService;
-
-    /**
-     * Service zur Spiellogik (Spielstart, Runden, Spielende).
-     */
     private final GameService gameService;
 
-    /**
-     * WebSocket-Endpunkt zum Beitreten einer Lobby.
-     * <p>
-     * Der Spieler wird einer Lobby (optional mit Kategorie) hinzugefügt.
-     * Anschließend wird geprüft, ob ein Match zustande kommt.
-     *
-     * @param request JoinLobbyRequest mit Spieler-ID und Kategorie
-     */
+    /* -------------------------- JOIN LOBBY -------------------------- */
     @MessageMapping("/game.join")
-    public void joinLobby(@Payload JoinLobbyRequest request) {
-        Player player = playerRepository.findById(request.getPlayerId())
-                .orElseThrow(() -> new RuntimeException("Player not found"));
+    public void joinLobby(@Payload JoinLobbyRequest request, Principal principal) {
+        log.info("🎮 GAME.JOIN | Principal: {}", principal != null ? principal.getName() : "NULL");
 
-        String category = request.getCategory() != null ? request.getCategory() : "ALL";
+        try {
+            Player player = playerRepository.findById(request.getPlayerId())
+                    .orElseThrow(() -> new RuntimeException("Spieler nicht gefunden"));
 
-        LobbyStatusDTO lobbyStatus = lobbyService.joinLobby(request.getPlayerId(), category);
+            String category = CategoryUtil.normalize(request.getCategory());
 
-        messagingTemplate.convertAndSendToUser(
-                player.getId().toString(),
-                "/queue/lobby.status",
-                lobbyStatus
-        );
+            LobbyStatusDTO lobbyStatus = lobbyService.joinLobby(player.getId(), category);
 
-        checkForMatchAndStartGame(category);
+            sendWithPrincipalSupport(principal, player.getId(),
+                    "/queue/lobby.status", lobbyStatus);
+
+            broadcastLobbyUpdate(category, "PLAYER_JOINED");
+
+            // 🔒 THREAD-SICHERES MATCHMAKING
+            synchronized (this) {
+                lobbyService.checkForMatch(category).ifPresent(match -> {
+
+                    // 🧹 Spieler aus Lobby entfernen
+                    lobbyService.leaveLobby(match.player1Id, match.category);
+                    lobbyService.leaveLobby(match.player2Id, match.category);
+
+                    Game game = gameService.createGame(
+                            match.player1Id,
+                            match.player2Id,
+                            match.category
+                    );
+
+                    notifyPlayersAboutMatch(game, match.player1Id, match.player2Id);
+                    startGameWithDelayAsync(game);
+
+                    log.info("🎮 MATCH gestartet: {} vs {}", match.player1Id, match.player2Id);
+                });
+            }
+
+        } catch (Exception e) {
+            log.error("FEHLER in joinLobby", e);
+            sendWithPrincipalSupport(principal, request.getPlayerId(),
+                    "/queue/game.error", e.getMessage());
+        }
     }
 
-    /**
-     * WebSocket-Endpunkt zum Verlassen der Lobby.
-     *
-     * @param request JoinLobbyRequest mit Spieler-ID und Kategorie
-     */
+    /* -------------------------- LEAVE LOBBY -------------------------- */
     @MessageMapping("/game.leave")
-    public void leaveLobby(@Payload JoinLobbyRequest request) {
+    public void leaveLobby(@Payload JoinLobbyRequest request, Principal principal) {
         lobbyService.leaveLobby(request.getPlayerId(), request.getCategory());
 
-        LobbyStatusDTO status = new LobbyStatusDTO("LEFT", "Lobby verlassen");
-        messagingTemplate.convertAndSendToUser(
-                request.getPlayerId().toString(),
+        sendWithPrincipalSupport(principal, request.getPlayerId(),
                 "/queue/lobby.status",
-                status
+                new LobbyStatusDTO("LEFT", "Lobby verlassen"));
+
+        broadcastLobbyUpdate(request.getCategory(), "PLAYER_LEFT");
+    }
+
+    /* -------------------------- ANSWER -------------------------- */
+    @MessageMapping("/game.answer")
+    public void submitAnswer(@Payload PlayerAnswerRequest request, Principal principal) {
+
+        sendWithPrincipalSupport(principal, request.getPlayerId(),
+                "/queue/game.answer.confirm", "Antwort erhalten");
+
+        messagingTemplate.convertAndSend(
+                "/topic/game." + request.getGameId(),
+                Map.of(
+                        "type", "ANSWER_SUBMITTED",
+                        "playerId", request.getPlayerId(),
+                        "roundNumber", request.getRoundNumber(),
+                        "answer", request.getSelectedAnswer()
+                )
         );
     }
 
-    /**
-     * WebSocket-Endpunkt zum Absenden einer Spielerantwort.
-     * <p>
-     * Die Antwort wird bestätigt und anschließend an alle Spielteilnehmer
-     * über ein Topic gesendet.
-     *
-     * @param request PlayerAnswerRequest mit Antwortdaten
-     */
-    @MessageMapping("/game.answer")
-    public void submitAnswer(@Payload PlayerAnswerRequest request) {
+    /* -------------------------- BROADCAST -------------------------- */
+    private void broadcastLobbyUpdate(String category, String status) {
+        LobbyService.LobbyInfo lobbyInfo = lobbyService.getLobbyInfo(category);
+
+        for (Long playerId : lobbyInfo.playerIds) {
+            LobbyUpdateMessage update = new LobbyUpdateMessage(
+                    category,
+                    lobbyInfo.playerCount,
+                    getPositionInQueue(playerId, lobbyInfo.playerIds),
+                    status
+            );
+            sendWithPrincipalSupport(null, playerId, "/queue/lobby.updates", update);
+        }
+    }
+
+    private int getPositionInQueue(Long playerId, List<Long> playerIds) {
+        return playerIds.indexOf(playerId) + 1;
+    }
+
+    /* -------------------------- MATCH NOTIFY -------------------------- */
+    private void notifyPlayersAboutMatch(Game game, Long p1, Long p2) {
+        Player player1 = playerRepository.findById(p1).orElseThrow();
+        Player player2 = playerRepository.findById(p2).orElseThrow();
+
+        messagingTemplate.convertAndSendToUser(
+                p1.toString(), "/queue/game.match",
+                new GameMatchMessage(game.getId(), convertToPlayerDTO(player2), game.getCategory())
+        );
+
+        messagingTemplate.convertAndSendToUser(
+                p2.toString(), "/queue/game.match",
+                new GameMatchMessage(game.getId(), convertToPlayerDTO(player1), game.getCategory())
+        );
+    }
+
+    /* -------------------------- GAME FLOW -------------------------- */
+    @Async
+    public void startGameWithDelayAsync(Game game) {
         try {
-            messagingTemplate.convertAndSendToUser(
-                    request.getPlayerId().toString(),
-                    "/queue/game.answer.confirm",
-                    "Antwort erhalten"
-            );
-
-            Map<String, Object> answerMessage = new HashMap<>();
-            answerMessage.put("type", "ANSWER_SUBMITTED");
-            answerMessage.put("playerId", request.getPlayerId());
-            answerMessage.put("roundNumber", request.getRoundNumber());
-            answerMessage.put("answer", request.getSelectedAnswer());
-
-            messagingTemplate.convertAndSend(
-                    "/topic/game." + request.getGameId(),
-                    answerMessage
-            );
-
+            for (int i = 5; i > 0; i--) {
+                messagingTemplate.convertAndSendToUser(
+                        game.getPlayer1().getId().toString(),
+                        "/queue/game.countdown", Map.of("seconds", i)
+                );
+                messagingTemplate.convertAndSendToUser(
+                        game.getPlayer2().getId().toString(),
+                        "/queue/game.countdown", Map.of("seconds", i)
+                );
+                Thread.sleep(1000);
+            }
+            gameService.startGame(game.getId());
+            startNewRound(game, 1);
         } catch (Exception e) {
-            messagingTemplate.convertAndSendToUser(
-                    request.getPlayerId().toString(),
-                    "/queue/game.error",
-                    "Fehler bei der Antwortverarbeitung: " + e.getMessage()
-            );
+            log.error("FEHLER beim Spielstart", e);
         }
     }
 
-    /**
-     * Prüft, ob in der Lobby ein Match entstanden ist, und startet ggf. ein Spiel.
-     *
-     * @param category Spielkategorie
-     */
-    private void checkForMatchAndStartGame(String category) {
-        Optional<LobbyService.MatchResult> matchOpt = lobbyService.checkForMatch(category);
-
-        if (matchOpt.isPresent()) {
-            LobbyService.MatchResult match = matchOpt.get();
-
-            try {
-                Game game = gameService.createGame(match.player1Id, match.player2Id, match.category);
-                notifyPlayersAboutMatch(game, match.player1Id, match.player2Id);
-                startGameWithDelay(game);
-
-            } catch (Exception e) {
-                lobbyService.joinLobby(match.player1Id, category);
-                lobbyService.joinLobby(match.player2Id, category);
-            }
-        }
-    }
-
-    /**
-     * Informiert beide Spieler über ein erfolgreiches Match.
-     *
-     * @param game       Das erstellte Spiel
-     * @param player1Id  ID von Spieler 1
-     * @param player2Id  ID von Spieler 2
-     */
-    private void notifyPlayersAboutMatch(Game game, Long player1Id, Long player2Id) {
-        Player player1 = playerRepository.findById(player1Id).orElseThrow();
-        Player player2 = playerRepository.findById(player2Id).orElseThrow();
-
-        PlayerDTO opponent1 = convertToPlayerDTO(player2);
-        PlayerDTO opponent2 = convertToPlayerDTO(player1);
-
-        GameMatchMessage message1 = new GameMatchMessage(game.getId(), opponent1, game.getCategory());
-        GameMatchMessage message2 = new GameMatchMessage(game.getId(), opponent2, game.getCategory());
-
-        messagingTemplate.convertAndSendToUser(player1Id.toString(), "/queue/game.match", message1);
-        messagingTemplate.convertAndSendToUser(player2Id.toString(), "/queue/game.match", message2);
-    }
-
-    /**
-     * Startet das Spiel nach einem Countdown in einem separaten Thread.
-     *
-     * @param game Das zu startende Spiel
-     */
-    private void startGameWithDelay(Game game) {
-        new Thread(() -> {
-            try {
-                for (int i = 5; i > 0; i--) {
-                    Map<String, Object> countdownMessage = new HashMap<>();
-                    countdownMessage.put("type", "COUNTDOWN");
-                    countdownMessage.put("seconds", i);
-
-                    messagingTemplate.convertAndSendToUser(
-                            game.getPlayer1().getId().toString(),
-                            "/queue/game.countdown",
-                            countdownMessage
-                    );
-                    messagingTemplate.convertAndSendToUser(
-                            game.getPlayer2().getId().toString(),
-                            "/queue/game.countdown",
-                            countdownMessage
-                    );
-
-                    Thread.sleep(1000);
-                }
-
-                gameService.startGame(game.getId());
-                startNewRound(game, 1);
-
-            } catch (Exception e) {
-                Thread.currentThread().interrupt();
-            }
-        }).start();
-    }
-
-    /**
-     * Startet eine neue Spielrunde und sendet eine Frage an alle Spieler.
-     *
-     * @param game        Aktuelles Spiel
-     * @param roundNumber Nummer der Runde
-     */
     private void startNewRound(Game game, int roundNumber) {
-        try {
-            gameService.startNewRound(game.getId(), roundNumber);
+        List<Question> questions =
+                questionRepository.findRandomQuestionsByCategory(game.getCategory(), 1);
 
-            List<Question> questions = questionRepository.findRandomQuestionsByCategory(
-                    game.getCategory(), 1
-            );
-
-            if (questions.isEmpty()) {
-                questions = questionRepository.findRandomQuestions(1);
-            }
-
-            if (questions.isEmpty()) {
-                endGame(game, "Spiel beendet - keine Fragen verfügbar");
-                return;
-            }
-
-            Map<String, Object> roundMessage = new HashMap<>();
-            roundMessage.put("type", "ROUND_START");
-            roundMessage.put("roundNumber", roundNumber);
-            roundMessage.put("question", questions.get(0));
-            roundMessage.put("timeLimit", 30000);
-
-            messagingTemplate.convertAndSend("/topic/game." + game.getId(), roundMessage);
-
-        } catch (Exception e) {
-            endGame(game, "Fehler beim Rundenstart");
+        if (questions.isEmpty()) {
+            endGame(game, "Keine Fragen verfügbar");
+            return;
         }
+
+        messagingTemplate.convertAndSend(
+                "/topic/game." + game.getId(),
+                Map.of(
+                        "type", "ROUND_START",
+                        "roundNumber", roundNumber,
+                        "question", questions.get(0),
+                        "timeLimit", 30000
+                )
+        );
     }
 
-    /**
-     * Beendet das Spiel und sendet die Endergebnisse an alle Spieler.
-     *
-     * @param game    Das Spiel
-     * @param message Abschlussnachricht
-     */
     private void endGame(Game game, String message) {
-        try {
-            gameService.finishGame(game.getId());
+        gameService.finishGame(game.getId());
+        messagingTemplate.convertAndSend(
+                "/topic/game." + game.getId(),
+                Map.of("type", "GAME_END", "message", message)
+        );
+    }
 
-            Map<String, Object> endMessage = new HashMap<>();
-            endMessage.put("type", "GAME_END");
-            endMessage.put("message", message);
+    /* -------------------------- HELPER -------------------------- */
+    private void sendWithPrincipalSupport(Principal principal, Long playerId,
+                                          String destination, Object payload) {
+        String user = principal != null ? principal.getName()
+                : playerId != null ? playerId.toString() : null;
 
-            messagingTemplate.convertAndSend("/topic/game." + game.getId(), endMessage);
-
-        } catch (Exception ignored) {
+        if (user != null) {
+            messagingTemplate.convertAndSendToUser(user, destination, payload);
         }
     }
 
-    /**
-     * Konvertiert ein Player-Objekt in ein PlayerDTO.
-     *
-     * @param player Spieler
-     * @return PlayerDTO
-     */
     private PlayerDTO convertToPlayerDTO(Player player) {
         PlayerDTO dto = new PlayerDTO();
         dto.setId(player.getId());
