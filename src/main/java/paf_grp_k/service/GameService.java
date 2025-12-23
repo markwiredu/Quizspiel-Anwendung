@@ -1,4 +1,3 @@
-
 package paf_grp_k.service;
 
 import paf_grp_k.model.*;
@@ -23,7 +22,6 @@ public class GameService {
     private final QuestionRepository questionRepository;
     private final RoundRepository roundRepository;
 
-    // Deine Methoden bleiben gleich...
     public Game createGame(Long player1Id, Long player2Id, String category) {
         Player player1 = playerRepository.findById(player1Id)
                 .orElseThrow(() -> new RuntimeException("Player 1 not found"));
@@ -66,6 +64,8 @@ public class GameService {
             throw new RuntimeException("No questions available");
         }
 
+
+
         Question question = questions.get(0);
 
         Round round = new Round();
@@ -74,14 +74,46 @@ public class GameService {
         round.setRoundNumber(roundNumber);
         round.setPointsPlayer1(0);
         round.setPointsPlayer2(0);
+        round.setStartTime(LocalDateTime.now());
 
         return roundRepository.save(round);
     }
 
+    public Game getGameById(Long gameId) {
+        return gameRepository.findById(gameId)
+                .orElseThrow(() -> new RuntimeException("Game not found with id: " + gameId));
+    }
+
+    public Round getCurrentRound(Long gameId, int roundNumber) {
+        return roundRepository.findByGameIdAndRoundNumber(gameId, roundNumber)
+                .orElseThrow(() -> new RuntimeException("Round not found for game: " + gameId + ", round: " + roundNumber));
+    }
+
+    public void submitAnswer(Long gameId, Long playerId, int roundNumber, String answer) {
+        Game game = getGameById(gameId);
+        Round round = getCurrentRound(gameId, roundNumber);
+
+        // Prüfe welcher Spieler antwortet
+        if (game.getPlayer1().getId().equals(playerId)) {
+            round.setAnswerPlayer1(answer);
+        } else if (game.getPlayer2().getId().equals(playerId)) {
+            round.setAnswerPlayer2(answer);
+        } else {
+            throw new RuntimeException("Player " + playerId + " is not part of game " + gameId);
+        }
+
+        roundRepository.save(round);
+
+        // Wenn beide geantwortet haben, Punkte berechnen
+        if (round.getAnswerPlayer1() != null && round.getAnswerPlayer2() != null) {
+            calculateRoundPoints(round);
+        }
+    }
+
     /**
-     * Punkte für Runde berechnen
+     * Punkte für Runde berechnen (jetzt public für Controller)
      */
-    private void calculateRoundPoints(Round round) {
+    public void calculateRoundPoints(Round round) {
         String correctAnswer = round.getQuestion().getCorrectAnswer();
 
         int points1 = correctAnswer.equals(round.getAnswerPlayer1()) ? 10 : 0;
@@ -89,12 +121,34 @@ public class GameService {
 
         round.setPointsPlayer1(points1);
         round.setPointsPlayer2(points2);
+        round.setEndTime(LocalDateTime.now());
 
         // Punkte zum Spiel-Score hinzufügen
         Game game = round.getGame();
         game.setScorePlayer1(game.getScorePlayer1() + points1);
         game.setScorePlayer2(game.getScorePlayer2() + points2);
+
         gameRepository.save(game);
+        roundRepository.save(round);
+    }
+
+    public void updateRoundPoints(Long roundId, int pointsPlayer1, int pointsPlayer2) {
+        Round round = roundRepository.findById(roundId)
+                .orElseThrow(() -> new RuntimeException("Round not found"));
+
+        round.setPointsPlayer1(pointsPlayer1);
+        round.setPointsPlayer2(pointsPlayer2);
+        roundRepository.save(round);
+
+        // Update game score
+        Game game = round.getGame();
+        game.setScorePlayer1(game.getScorePlayer1() + pointsPlayer1);
+        game.setScorePlayer2(game.getScorePlayer2() + pointsPlayer2);
+        gameRepository.save(game);
+    }
+
+    public List<Round> getGameRounds(Long gameId) {
+        return roundRepository.findByGameIdOrderByRoundNumber(gameId);
     }
 
     /**
@@ -116,5 +170,24 @@ public class GameService {
         // Bei Gleichstand bleibt winner null
 
         return gameRepository.save(game);
+    }
+
+    public List<Game> getPlayerGames(Long playerId) {
+        return gameRepository.findByPlayer1IdOrPlayer2Id(playerId, playerId);
+    }
+
+    public Game getActiveGameByPlayer(Long playerId) {
+        return gameRepository.findByPlayerIdAndStatus(playerId, GameStatus.IN_PROGRESS)
+                .orElse(null);
+    }
+
+    public List<Game> getGamesByPlayerId(Long playerId) {
+        // Prüfen ob Spieler existiert
+        if (!playerRepository.existsById(playerId)) {
+            throw new RuntimeException("Player not found with id: " + playerId);
+        }
+
+        // Spiele abrufen
+        return gameRepository.findByPlayer1IdOrPlayer2Id(playerId, playerId);
     }
 }

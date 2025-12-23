@@ -6,70 +6,107 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 @RequiredArgsConstructor
 public class LobbyService {
 
-    private final Map<String, Queue<Long>> lobbyQueues = new ConcurrentHashMap<>();
+    private final Map<String, ConcurrentLinkedQueue<Long>> lobbyQueues = new ConcurrentHashMap<>();
+    private final Map<String, ReentrantLock> lobbyLocks = new ConcurrentHashMap<>();
+    private final Set<Long> playersInAnyLobby = ConcurrentHashMap.newKeySet();
 
-    /* ===================== JOIN LOBBY ===================== */
     public LobbyStatusDTO joinLobby(Long playerId, String category) {
-        String lobbyCategory = normalize(category);
+        String lobbyKey = normalizeCategory(category);
 
-        lobbyQueues.putIfAbsent(lobbyCategory, new LinkedList<>());
-        Queue<Long> queue = lobbyQueues.get(lobbyCategory);
+        // Verhindere doppelten Lobby-Beitritt
+        if (playersInAnyLobby.contains(playerId)) {
+            return LobbyStatusDTO.alreadyInLobby(category);
+        }
 
-        if (!queue.contains(playerId)) {
+        lobbyLocks.putIfAbsent(lobbyKey, new ReentrantLock());
+        ReentrantLock lock = lobbyLocks.get(lobbyKey);
+
+        lock.lock();
+        try {
+            lobbyQueues.putIfAbsent(lobbyKey, new ConcurrentLinkedQueue<>());
+            ConcurrentLinkedQueue<Long> queue = lobbyQueues.get(lobbyKey);
+
             queue.add(playerId);
+            playersInAnyLobby.add(playerId);
+
+            int position = getPositionInQueue(playerId, queue);
+
+            return LobbyStatusDTO.waiting(position, queue.size(), category);
+        } catch (Exception e) {
+            return LobbyStatusDTO.error("Fehler beim Beitritt: " + e.getMessage());
+        } finally {
+            lock.unlock();
         }
-
-        int position = getPositionInQueue(playerId, queue);
-        int totalPlayers = queue.size();
-
-        return new LobbyStatusDTO(
-                "WAITING",
-                position,
-                totalPlayers,
-                "Warte auf Gegner... Position: " + position + " von " + totalPlayers
-        );
     }
 
-    /* ===================== MATCHMAKING ===================== */
-    public Optional<MatchResult> checkForMatch(String category) {
-        String lobbyCategory = normalize(category);
-        Queue<Long> queue = lobbyQueues.get(lobbyCategory);
+    public Optional<MatchResult> checkAndCreateMatch(String category) {
+        String lobbyKey = normalizeCategory(category);
 
-        if (queue != null && queue.size() >= 2) {
-            Long player1Id = queue.poll();
-            Long player2Id = queue.poll();
-
-            return Optional.of(new MatchResult(player1Id, player2Id, lobbyCategory));
+        if (!lobbyLocks.containsKey(lobbyKey)) {
+            return Optional.empty();
         }
-        return Optional.empty();
-    }
 
-    /* ===================== LEAVE LOBBY ===================== */
-    public void leaveLobby(Long playerId, String category) {
-        String lobbyCategory = normalize(category);
-        Queue<Long> queue = lobbyQueues.get(lobbyCategory);
+        ReentrantLock lock = lobbyLocks.get(lobbyKey);
+        lock.lock();
+        try {
+            ConcurrentLinkedQueue<Long> queue = lobbyQueues.get(lobbyKey);
 
-        if (queue != null) {
-            queue.remove(playerId);
-            if (queue.isEmpty()) {
-                lobbyQueues.remove(lobbyCategory);
+            if (queue != null && queue.size() >= 2) {
+                Long player1Id = queue.poll();
+                Long player2Id = queue.poll();
+
+                if (player1Id != null && player2Id != null) {
+                    playersInAnyLobby.remove(player1Id);
+                    playersInAnyLobby.remove(player2Id);
+
+                    return Optional.of(new MatchResult(player1Id, player2Id, category));
+                }
             }
+            return Optional.empty();
+        } finally {
+            lock.unlock();
         }
     }
 
-    /* ===================== LOBBY INFO (WICHTIG!) ===================== */
+    public void leaveLobby(Long playerId, String category) {
+        String lobbyKey = normalizeCategory(category);
+
+        if (!lobbyLocks.containsKey(lobbyKey)) {
+            return;
+        }
+
+        ReentrantLock lock = lobbyLocks.get(lobbyKey);
+        lock.lock();
+        try {
+            ConcurrentLinkedQueue<Long> queue = lobbyQueues.get(lobbyKey);
+            if (queue != null) {
+                queue.remove(playerId);
+                playersInAnyLobby.remove(playerId);
+
+                if (queue.isEmpty()) {
+                    lobbyQueues.remove(lobbyKey);
+                    lobbyLocks.remove(lobbyKey);
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public LobbyInfo getLobbyInfo(String category) {
-        String lobbyCategory = normalize(category);
-        Queue<Long> queue = lobbyQueues.getOrDefault(lobbyCategory, new LinkedList<>());
+        String lobbyKey = normalizeCategory(category);
+        ConcurrentLinkedQueue<Long> queue = lobbyQueues.getOrDefault(lobbyKey,
+                new ConcurrentLinkedQueue<>());
         return new LobbyInfo(new ArrayList<>(queue));
     }
 
-    /* ===================== HELPER ===================== */
     private int getPositionInQueue(Long playerId, Queue<Long> queue) {
         int position = 1;
         for (Long id : queue) {
@@ -81,11 +118,15 @@ public class LobbyService {
         return 0;
     }
 
-    private String normalize(String category) {
-        return category != null ? category : "ALL";
+    private String normalizeCategory(String category) {
+        if (category == null || category.trim().isEmpty()) {
+            return "DEFAULT";
+        }
+        return category.toUpperCase();
     }
 
-    /* ===================== DTOs ===================== */
+    // ========== INNER CLASSES ==========
+
     public static class LobbyInfo {
         public final List<Long> playerIds;
         public final int playerCount;
@@ -105,6 +146,15 @@ public class LobbyService {
             this.player1Id = player1Id;
             this.player2Id = player2Id;
             this.category = category;
+        }
+
+        @Override
+        public String toString() {
+            return "MatchResult{" +
+                    "player1Id=" + player1Id +
+                    ", player2Id=" + player2Id +
+                    ", category='" + category + '\'' +
+                    '}';
         }
     }
 }
