@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuizDuell - Spiel</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+  <style>
+    :root {
+        --player1-color: #4e73df;
+        --player2-color: #e74a3b;
+        --neutral-color: #6c757d;
+    }
+
+    .game-container {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .player-panel {
+        border-radius: 15px;
+        padding: 20px;
+        margin: 10px;
+        transition: all 0.3s ease;
+    }
+
+    .player1-panel {
+        background: linear-gradient(135deg, var(--player1-color) 0%, #2e59d9 100%);
+        color: white;
+    }
+
+    .player2-panel {
+        background: linear-gradient(135deg, var(--player2-color) 0%, #c0352b 100%);
+        color: white;
+    }
+
+    .question-card {
+        background: white;
+        border: 3px solid #dee2e6;
+        border-radius: 15px;
+        padding: 30px;
+        margin: 20px 0;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    }
+
+    .answer-option {
+        background: #f8f9fa;
+        border: 2px solid #dee2e6;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .answer-option:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .answer-option.selected {
+        border-color: var(--player1-color);
+        background-color: rgba(78, 115, 223, 0.1);
+    }
+
+    .answer-option.correct {
+        border-color: #1cc88a;
+        background-color: rgba(28, 200, 138, 0.1);
+    }
+
+    .answer-option.incorrect {
+        border-color: #e74a3b;
+        background-color: rgba(231, 74, 59, 0.1);
+    }
+
+    .timer-bar {
+        height: 10px;
+        background: #e9ecef;
+        border-radius: 5px;
+        overflow: hidden;
+        margin: 20px 0;
+    }
+
+    .timer-progress {
+        height: 100%;
+        background: linear-gradient(90deg, #1cc88a, #4e73df);
+        transition: width 1s linear;
+    }
+
+    .score-display {
+        font-size: 2.5rem;
+        font-weight: bold;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+
+    .round-indicator {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: white;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        border: 3px solid var(--player1-color);
+    }
+
+    .player-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        border: 4px solid white;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    .opponent-answer-indicator {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--neutral-color);
+        color: white;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
+    .opponent-answer-indicator.answered {
+        background: var(--player2-color);
+        animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+
+    .countdown-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .countdown-number {
+        font-size: 15rem;
+        color: white;
+        font-weight: bold;
+        animation: countdownPop 0.5s ease-out;
+    }
+
+    @keyframes countdownPop {
+        0% { transform: scale(0.5); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+
+    .game-result-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+    }
+
+    .result-card {
+        background: white;
+        border-radius: 20px;
+        padding: 40px;
+        max-width: 500px;
+        text-align: center;
+        animation: slideUp 0.5s ease-out;
+    }
+
+    @keyframes slideUp {
+        from { transform: translateY(50px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+<div class="game-container py-4">
+  <!-- Spiel-Header -->
+  <div class="row mb-4">
+    <div class="col-4">
+      <div class="player-panel player1-panel text-center">
+        <img id="player1Avatar" src="/images/default-avatar.jpg" class="player-avatar mb-2">
+        <h5 id="player1Name">Du</h5>
+        <div class="score-display" id="player1Score">0</div>
+        <small>Punkte</small>
+      </div>
+    </div>
+
+    <div class="col-4 text-center d-flex flex-column justify-content-center">
+      <h2 class="mb-0">VS</h2>
+      <small class="text-muted" id="gameCategory">Kategorie</small>
+      <div class="mt-2">
+        <span class="badge bg-primary" id="currentRound">Runde 1/5</span>
+      </div>
+    </div>
+
+    <div class="col-4">
+      <div class="player-panel player2-panel text-center">
+        <img id="player2Avatar" src="/images/default-avatar.jpg" class="player-avatar mb-2">
+        <h5 id="player2Name">Gegner</h5>
+        <div class="score-display" id="player2Score">0</div>
+        <small>Punkte</small>
+        <div class="mt-2 d-flex justify-content-center align-items-center">
+          <small>Antwort:</small>
+          <div id="opponentAnswerStatus" class="opponent-answer-indicator">
+            ?
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Runden-Anzeige -->
+  <div class="round-indicator">
+    <span id="roundNumber">1</span>/<span id="totalRounds">5</span>
+  </div>
+
+  <!-- Frage-Bereich -->
+  <div class="question-card">
+    <div class="text-center mb-4">
+      <h3 id="questionCategory" class="badge bg-secondary"></h3>
+      <h1 id="questionText" class="my-4">Frage wird geladen...</h1>
+    </div>
+
+    <!-- Timer -->
+    <div class="timer-bar">
+      <div id="timerProgress" class="timer-progress" style="width: 100%"></div>
+    </div>
+    <div class="text-center mb-4">
+      <span id="timeLeft" class="fw-bold">30</span> Sekunden verbleibend
+    </div>
+
+    <!-- Antwort-Optionen -->
+    <div class="row" id="answerOptions">
+      <!-- Wird dynamisch geladen -->
+    </div>
+  </div>
+
+  <!-- Kontroll-Buttons -->
+  <div class="text-center mt-4">
+    <button id="submitAnswerBtn" class="btn btn-primary btn-lg px-5" disabled>
+      Antwort absenden
+    </button>
+    <button id="nextRoundBtn" class="btn btn-success btn-lg px-5 d-none">
+      Nächste Runde →
+    </button>
+  </div>
+
+  <!-- Chat / Log -->
+  <div class="card mt-4">
+    <div class="card-header">
+      <h5 class="mb-0">📝 Spielverlauf</h5>
+    </div>
+    <div class="card-body" style="max-height: 200px; overflow-y: auto;">
+      <div id="gameLog"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Countdown Overlay -->
+<div id="countdownOverlay" class="countdown-overlay d-none">
+  <div class="countdown-number" id="countdownDisplay">3</div>
+</div>
+
+<!-- Ergebnis Overlay -->
+<div id="gameResultModal" class="game-result-modal d-none">
+  <div class="result-card">
+    <h1 id="resultTitle" class="mb-4">Spiel beendet!</h1>
+    <div class="display-1 mb-4" id="resultIcon">🏆</div>
+    <h3 id="resultMessage">Ergebnis wird berechnet...</h3>
+    <div class="mt-4">
+      <div class="row">
+        <div class="col-6">
+          <h5 id="finalScorePlayer1">0</h5>
+          <small>Deine Punkte</small>
+        </div>
+        <div class="col-6">
+          <h5 id="finalScorePlayer2">0</h5>
+          <small>Gegner Punkte</small>
+        </div>
+      </div>
+    </div>
+    <div class="mt-5">
+      <button onclick="returnToLobby()" class="btn btn-primary btn-lg me-3">
+        Zurück zur Lobby
+      </button>
+      <button onclick="playAgain()" class="btn btn-success btn-lg">
+        Nochmal spielen
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let stompClient = null;
+  let currentGame = null;
+  let currentPlayer = null;
+  let currentRound = 1;
+  const TOTAL_ROUNDS = 5;
+  let selectedAnswer = null;
+  let timerInterval = null;
+  let timeLeft = 30;
+
+  // DOM Elemente
+  const elements = {
+      questionText: document.getElementById('questionText'),
+      answerOptions: document.getElementById('answerOptions'),
+      submitAnswerBtn: document.getElementById('submitAnswerBtn'),
+      nextRoundBtn: document.getElementById('nextRoundBtn'),
+      timerProgress: document.getElementById('timerProgress'),
+      timeLeft: document.getElementById('timeLeft'),
+      player1Score: document.getElementById('player1Score'),
+      player2Score: document.getElementById('player2Score'),
+      player1Name: document.getElementById('player1Name'),
+      player2Name: document.getElementById('player2Name'),
+      player1Avatar: document.getElementById('player1Avatar'),
+      player2Avatar: document.getElementById('player2Avatar'),
+      gameCategory: document.getElementById('gameCategory'),
+      questionCategory: document.getElementById('questionCategory'),
+      roundNumber: document.getElementById('roundNumber'),
+      totalRounds: document.getElementById('totalRounds'),
+      currentRound: document.getElementById('currentRound'),
+      opponentAnswerStatus: document.getElementById('opponentAnswerStatus'),
+      gameLog: document.getElementById('gameLog'),
+      countdownOverlay: document.getElementById('countdownOverlay'),
+      countdownDisplay: document.getElementById('countdownDisplay'),
+      gameResultModal: document.getElementById('gameResultModal'),
+      resultTitle: document.getElementById('resultTitle'),
+      resultMessage: document.getElementById('resultMessage'),
+      resultIcon: document.getElementById('resultIcon'),
+      finalScorePlayer1: document.getElementById('finalScorePlayer1'),
+      finalScorePlayer2: document.getElementById('finalScorePlayer2')
+  };
+
+  // Spiel initialisieren
+  window.onload = function() {
+      loadGameData();
+      connectWebSocket();
+      setupEventListeners();
+  };
+
+  function loadGameData() {
+      // Spielerdaten laden
+      const savedPlayer = localStorage.getItem('currentPlayer');
+      if (savedPlayer) {
+          currentPlayer = JSON.parse(savedPlayer);
+          elements.player1Name.textContent = currentPlayer.username;
+          if (currentPlayer.profileImageUrl) {
+              elements.player1Avatar.src = currentPlayer.profileImageUrl;
+          }
+      }
+
+      // Spieldaten laden
+      const savedGame = localStorage.getItem('currentGame');
+      if (savedGame) {
+          currentGame = JSON.parse(savedGame);
+          updateGameDisplay();
+      } else {
+          // Fallback: aus URL laden
+          const urlParams = new URLSearchParams(window.location.search);
+          const gameId = urlParams.get('gameId');
+          if (gameId) {
+              fetchGameData(gameId);
+          }
+      }
+  }
+
+  function fetchGameData(gameId) {
+      fetch(`/api/games/${gameId}`)
+          .then(response => response.json())
+          .then(game => {
+              currentGame = game;
+              updateGameDisplay();
+          })
+          .catch(error => {
+              console.error('Fehler beim Laden des Spiels:', error);
+              addGameLog('❌ Spiel konnte nicht geladen werden');
+          });
+  }
+
+  function connectWebSocket() {
+      const socket = new SockJS('/quiz-websocket');
+      stompClient = Stomp.over(socket);
+
+      stompClient.connect({}, function(frame) {
+          console.log('✅ WebSocket für Spiel verbunden');
+
+          // Game-Channel subscriben
+          if (currentGame?.id) {
+              subscribeToGame();
+          }
+
+          // User-specific channels
+          if (currentPlayer?.id) {
+              subscribeToUser();
+          }
+
+      }, function(error) {
+          console.error('❌ WebSocket Fehler:', error);
+          addGameLog('Verbindungsfehler. Bitte Seite neu laden.');
+      });
+  }
+
+  function subscribeToGame() {
+      stompClient.subscribe(`/topic/game/${currentGame.id}`, function(message) {
+          const data = JSON.parse(message.body);
+          handleGameMessage(data);
+      });
+
+      stompClient.subscribe(`/topic/game/${currentGame.id}/countdown`, function(message) {
+          const data = JSON.parse(message.body);
+          if (data.type === 'COUNTDOWN') {
+              showCountdown(data.seconds);
+          }
+      });
+  }
+
+  function subscribeToUser() {
+      stompClient.subscribe(`/user/queue/game.updates`, function(message) {
+          const data = JSON.parse(message.body);
+          handleGameUpdate(data);
+      });
+  }
+
+  function handleGameMessage(data) {
+      console.log('🎮 Spiel-Nachricht:', data);
+
+      switch(data.type) {
+          case 'ROUND_START':
+              startNewRound(data);
+              break;
+
+          case 'ROUND_RESULT':
+              showRoundResult(data);
+              break;
+
+          case 'GAME_START':
+              showGameStart(data);
+              break;
+
+          case 'GAME_END':
+              endGame(data);
+              break;
+
+          case 'OPPONENT_ANSWERED':
+              opponentAnswered();
+              break;
+
+          case 'SCORE_UPDATE':
+              updateScores(data);
+              break;
+      }
+  }
+
+  function startNewRound(roundData) {
+      resetRound();
+      currentRound = roundData.roundNumber || currentRound;
+
+      // UI aktualisieren
+      elements.roundNumber.textContent = currentRound;
+      elements.totalRounds.textContent = TOTAL_ROUNDS;
+      elements.currentRound.textContent = `Runde ${currentRound}/${TOTAL_ROUNDS}`;
+
+      // Frage anzeigen
+      if (roundData.question) {
+          displayQuestion(roundData.question);
+      }
+
+      // Timer starten
+      startTimer(roundData.timeLimit || 30000);
+
+      addGameLog(`📊 Runde ${currentRound} gestartet!`);
+  }
+
+  function displayQuestion(question) {
+      elements.questionText.textContent = question.text;
+      elements.questionCategory.textContent = question.category || currentGame.category;
+
+      // Antwortoptionen anzeigen
+      let html = '';
+      const answers = [question.correctAnswer, ...question.wrongAnswers];
+      shuffleArray(answers);
+
+      answers.forEach((answer, index) => {
+          html += `
+              <div class="col-md-6 mb-3">
+                  <div class="answer-option"
+                       data-answer="${answer}"
+                       onclick="selectAnswer(this, '${answer.replace(/'/g, "\\'")}')">
+                      <div class="d-flex align-items-center">
+                          <span class="badge bg-secondary me-3">${String.fromCharCode(65 + index)}</span>
+                          <span>${answer}</span>
+                      </div>
+                  </div>
+              </div>
+          `;
+      });
+
+      elements.answerOptions.innerHTML = html;
+  }
+
+  function selectAnswer(element, answer) {
+      // Vorherige Auswahl entfernen
+      document.querySelectorAll('.answer-option').forEach(opt => {
+          opt.classList.remove('selected');
+      });
+
+      // Neue Auswahl markieren
+      element.classList.add('selected');
+      selectedAnswer = answer;
+      elements.submitAnswerBtn.disabled = false;
+  }
+
+  function startTimer(timeLimit) {
+      clearInterval(timerInterval);
+      timeLeft = timeLimit / 1000;
+      elements.timeLeft.textContent = timeLeft;
+
+      timerInterval = setInterval(() => {
+          timeLeft--;
+          elements.timeLeft.textContent = timeLeft;
+
+          // Fortschrittsbalken
+          const percentage = (timeLeft / (timeLimit / 1000)) * 100;
+          elements.timerProgress.style.width = `${percentage}%`;
+
+          // Farbwechsel
+          if (timeLeft <= 10) {
+              elements.timerProgress.style.background = 'linear-gradient(90deg, #e74a3b, #f6c23e)';
+          }
+
+          if (timeLeft <= 0) {
+              clearInterval(timerInterval);
+              submitAnswer(); // Automatisch absenden
+          }
+      }, 1000);
+  }
+
+  function submitAnswer() {
+      if (!selectedAnswer) return;
+
+      clearInterval(timerInterval);
+      elements.submitAnswerBtn.disabled = true;
+
+      // Antwort an Server senden
+      stompClient.send("/app/game.answer", {}, JSON.stringify({
+          gameId: currentGame.id,
+          playerId: currentPlayer.id,
+          roundNumber: currentRound,
+          answer: selectedAnswer
+      }));
+
+      addGameLog(`✅ Deine Antwort: "${selectedAnswer}"`);
+  }
+
+  function showRoundResult(resultData) {
+      // Richtige Antwort markieren
+      const correctAnswer = resultData.correctAnswer;
+      document.querySelectorAll('.answer-option').forEach(opt => {
+          const answer = opt.getAttribute('data-answer');
+          if (answer === correctAnswer) {
+              opt.classList.add('correct');
+          } else if (answer === selectedAnswer && answer !== correctAnswer) {
+              opt.classList.add('incorrect');
+          }
+          opt.style.pointerEvents = 'none'; // Deaktiviere Klicks
+      });
+
+      // Punkte anzeigen
+      if (resultData.player1Points) {
+          elements.player1Score.textContent =
+              parseInt(elements.player1Score.textContent) + resultData.player1Points;
+      }
+
+      if (resultData.player2Points) {
+          elements.player2Score.textContent =
+              parseInt(elements.player2Score.textContent) + resultData.player2Points;
+      }
+
+      // Nächste Runde Button anzeigen
+      if (currentRound < TOTAL_ROUNDS) {
+          elements.nextRoundBtn.classList.remove('d-none');
+      }
+
+      addGameLog(resultData.message || `Runde ${currentRound} beendet!`);
+  }
+
+  function nextRound() {
+      currentRound++;
+      elements.nextRoundBtn.classList.add('d-none');
+
+      // Nächste Runde vom Server anfordern
+      stompClient.send("/app/game.nextRound", {}, JSON.stringify({
+          gameId: currentGame.id,
+          roundNumber: currentRound
+      }));
+  }
+
+  function opponentAnswered() {
+      elements.opponentAnswerStatus.textContent = '✓';
+      elements.opponentAnswerStatus.classList.add('answered');
+      addGameLog('👀 Gegner hat geantwortet...');
+  }
+
+  function updateScores(scoreData) {
+      if (scoreData.player1Score !== undefined) {
+          elements.player1Score.textContent = scoreData.player1Score;
+      }
+      if (scoreData.player2Score !== undefined) {
+          elements.player2Score.textContent = scoreData.player2Score;
+      }
+  }
+
+  function showCountdown(seconds) {
+      elements.countdownDisplay.textContent = seconds;
+      elements.countdownOverlay.classList.remove('d-none');
+
+      if (seconds <= 0) {
+          setTimeout(() => {
+              elements.countdownOverlay.classList.add('d-none');
+          }, 1000);
+      }
+  }
+
+  function showGameStart(data) {
+      // Gegner-Daten anzeigen
+      if (currentGame.player2) {
+          elements.player2Name.textContent = currentGame.player2.username;
+          if (currentGame.player2.profileImageUrl) {
+              elements.player2Avatar.src = currentGame.player2.profileImageUrl;
+          }
+      }
+
+      elements.gameCategory.textContent = data.category || 'QuizDuell';
+      addGameLog('🎮 Spiel gestartet! Viel Erfolg!');
+  }
+
+  function endGame(data) {
+      clearInterval(timerInterval);
+
+      // Ergebnis anzeigen
+      const player1Score = parseInt(elements.player1Score.textContent);
+      const player2Score = parseInt(elements.player2Score.textContent);
+
+      elements.finalScorePlayer1.textContent = player1Score;
+      elements.finalScorePlayer2.textContent = player2Score;
+
+      if (player1Score > player2Score) {
+          elements.resultTitle.textContent = '🏆 Gewonnen!';
+          elements.resultMessage.textContent = 'Herzlichen Glückwunsch! Du hast gewonnen!';
+          elements.resultIcon.textContent = '🎉';
+      } else if (player2Score > player1Score) {
+          elements.resultTitle.textContent = '😔 Verloren';
+          elements.resultMessage.textContent = 'Leider verloren. Nächstes Mal bestimmt!';
+          elements.resultIcon.textContent = '💪';
+      } else {
+          elements.resultTitle.textContent = '🤝 Unentschieden';
+          elements.resultMessage.textContent = 'Spannendes Spiel! Punktgleich!';
+          elements.resultIcon.textContent = '⚖️';
+      }
+
+      elements.gameResultModal.classList.remove('d-none');
+      addGameLog(data.message || 'Spiel beendet!');
+  }
+
+  function returnToLobby() {
+      window.location.href = '/lobby.html';
+  }
+
+  function playAgain() {
+      // Zur Lobby mit gleicher Kategorie
+      window.location.href = `/lobby.html?category=${encodeURIComponent(currentGame.category)}`;
+  }
+
+  function setupEventListeners() {
+      elements.submitAnswerBtn.addEventListener('click', submitAnswer);
+      elements.nextRoundBtn.addEventListener('click', nextRound);
+  }
+
+  function resetRound() {
+      selectedAnswer = null;
+      elements.submitAnswerBtn.disabled = true;
+      elements.nextRoundBtn.classList.add('d-none');
+      elements.opponentAnswerStatus.textContent = '?';
+      elements.opponentAnswerStatus.classList.remove('answered');
+      elements.timerProgress.style.background = 'linear-gradient(90deg, #1cc88a, #4e73df)';
+  }
+
+  function updateGameDisplay() {
+      if (!currentGame) return;
+
+      elements.gameCategory.textContent = currentGame.category || 'QuizDuell';
+
+      if (currentGame.player1) {
+          elements.player1Name.textContent = currentGame.player1.username;
+      }
+
+      if (currentGame.player2) {
+          elements.player2Name.textContent = currentGame.player2.username;
+      }
+  }
+
+  function addGameLog(message) {
+      const timestamp = new Date().toLocaleTimeString();
+      const logEntry = document.createElement('div');
+      logEntry.className = 'mb-1';
+      logEntry.innerHTML = `<small class="text-muted">[${timestamp}]</small> ${message}`;
+      elements.gameLog.appendChild(logEntry);
+      elements.gameLog.scrollTop = elements.gameLog.scrollHeight;
+  }
+
+  // Utility-Funktionen
+  function shuffleArray(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+  }
+</script>
+</body>
+</html>
