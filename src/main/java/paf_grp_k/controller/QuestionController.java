@@ -4,6 +4,9 @@ import paf_grp_k.model.Question;
 import paf_grp_k.repository.QuestionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import paf_grp_k.dto.QuestionPublicDTO;
+import java.util.stream.Collectors;
+
 
 import java.util.List;
 
@@ -31,9 +34,13 @@ public class QuestionController {
      * @return Liste aller Fragen in der Datenbank
      */
     @GetMapping
-    public List<Question> getAllQuestions() {
-        return questionRepository.findAll();
+    public List<QuestionPublicDTO> getAllQuestions() {
+        return questionRepository.findAll()
+                .stream()
+                .map(this::toPublicDto)
+                .collect(Collectors.toList());
     }
+
 
     /**
      * Gibt eine einzelne Frage anhand ihrer ID zurück.
@@ -45,9 +52,10 @@ public class QuestionController {
      * @throws RuntimeException wenn keine Frage mit dieser ID existiert
      */
     @GetMapping("/{id}")
-    public Question getQuestionById(@PathVariable Long id) {
-        return questionRepository.findById(id)
+    public QuestionPublicDTO getQuestionById(@PathVariable Long id) {
+        Question q = questionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Question not found with id: " + id));
+        return toPublicDto(q);
     }
 
     /**
@@ -59,8 +67,11 @@ public class QuestionController {
      * @return Liste zufällig ausgewählter Fragen
      */
     @GetMapping("/random")
-    public List<Question> getRandomQuestions(@RequestParam(defaultValue = "5") int count) {
-        return questionRepository.findRandomQuestions(count);
+    public List<QuestionPublicDTO> getRandomQuestions(@RequestParam(defaultValue = "5") int count) {
+        return questionRepository.findRandomQuestions(count)
+                .stream()
+                .map(this::toPublicDto)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -72,8 +83,11 @@ public class QuestionController {
      * @return Liste aller Fragen in dieser Kategorie
      */
     @GetMapping("/category/{category}")
-    public List<Question> getQuestionsByCategory(@PathVariable String category) {
-        return questionRepository.findByCategory(category);
+    public List<QuestionPublicDTO> getQuestionsByCategory(@PathVariable String category) {
+        return questionRepository.findByCategory(category)
+                .stream()
+                .map(this::toPublicDto)
+                .collect(Collectors.toList());
     }
 
     /**
@@ -85,7 +99,33 @@ public class QuestionController {
      * @return die gespeicherte Frage
      */
     @PostMapping
-    public Question createQuestion(@RequestBody Question question) {
-        return questionRepository.save(question);
+    public QuestionPublicDTO createQuestion(@RequestBody Question question) {
+
+        if (questionRepository.existsByQuestionText(question.getQuestionText())) {
+            throw new RuntimeException("Question already exists: " + question.getQuestionText());
+        }
+
+        // Optional: basic validation
+        String ca = question.getCorrectAnswer();
+        if (ca == null || !(ca.equalsIgnoreCase("A") || ca.equalsIgnoreCase("B") || ca.equalsIgnoreCase("C") || ca.equalsIgnoreCase("D"))) {
+            throw new RuntimeException("correctAnswer must be A, B, C or D");
+        }
+
+        Question saved = questionRepository.save(question);
+        return toPublicDto(saved);
     }
+
+
+    private QuestionPublicDTO toPublicDto(Question q) {
+        return new QuestionPublicDTO(
+                q.getId(),
+                q.getCategory(),
+                q.getQuestionText(),
+                q.getOptionA(),
+                q.getOptionB(),
+                q.getOptionC(),
+                q.getOptionD()
+        );
+    }
+
 }
