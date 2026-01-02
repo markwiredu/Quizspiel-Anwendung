@@ -112,6 +112,26 @@
             font-weight: bold;
             color: #4e73df;
         }
+        /* Neue Styles für Abmelde-Button und Hilfe */
+        #playerInfo {
+            border-left: 5px solid #4e73df;
+        }
+        #logoutBtn {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+        }
+        #helpBtn {
+            font-size: 0.9rem;
+        }
+        .modal-content {
+            border-radius: 15px;
+            border: 3px solid #4e73df;
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #4e73df 0%, #2e59d9 100%);
+            color: white;
+            border-radius: 12px 12px 0 0;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -123,9 +143,12 @@
             <p class="text-muted">Finde einen Gegner und starte das Spiel!</p>
         </div>
 
-        <!-- Spieler Info -->
-        <div id="playerInfo" class="alert alert-info">
-            <strong>👤 Eingeloggt als:</strong> <span id="currentPlayerName">-</span>
+        <!-- Spieler Info mit Abmelde-Button -->
+        <div id="playerInfo" class="alert alert-info d-flex justify-content-between align-items-center">
+            <div>
+                <strong>👤 Eingeloggt als:</strong> <span id="currentPlayerName">-</span>
+            </div>
+            <button id="logoutBtn" class="btn btn-sm btn-outline-danger">🚪 Abmelden</button>
         </div>
 
         <!-- Kategorie Auswahl -->
@@ -194,6 +217,11 @@
                     <div id="queuePosition" class="mb-2 fs-5"></div>
                     <div class="spinner-border text-primary mt-3" role="status">
                         <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <div class="mt-3">
+                        <small class="text-muted">💡 Tipp: Je mehr Spieler online sind, desto schneller findet sich ein Match!</small>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -213,14 +241,60 @@
         </div>
 
         <!-- Navigation -->
-        <div class="text-center">
-            <a href="/index.html" class="btn btn-outline-secondary">← Zur Startseite</a>
+        <div class="text-center mt-3">
+            <a href="/index.html" class="btn btn-outline-secondary me-2">
+                ← Zur Startseite
+            </a>
+            <button id="helpBtn" class="btn btn-outline-info">
+                ❓ Hilfe
+            </button>
         </div>
     </div>
 </div>
 
 <!-- Notification Container -->
 <div id="notificationContainer" class="notification-container"></div>
+
+<!-- Help Modal -->
+<div class="modal fade" id="helpModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">🎮 QuizDuell - Hilfe</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6>📋 Spielablauf:</h6>
+                <ol>
+                    <li><strong>Kategorie wählen</strong> - Wähle dein Lieblingsthema</li>
+                    <li><strong>Lobby betreten</strong> - Suche nach Gegnern</li>
+                    <li><strong>Matchmaking</strong> - Warte auf passenden Gegner</li>
+                    <li><strong>Spiel starten</strong> - 5 Runden Quiz-Duell</li>
+                    <li><strong>Gewinner</strong> - Punkte sammeln und gewinnen!</li>
+                </ol>
+
+                <h6>🎯 Tipps & Tricks:</h6>
+                <ul>
+                    <li>✅ <strong>Alle Kategorien</strong> = Schnelleres Matchmaking</li>
+                    <li>⏱️ <strong>Antwortzeit</strong> = 30 Sekunden pro Frage</li>
+                    <li>🏆 <strong>Punkte</strong> = 10 Punkte pro richtige Antwort</li>
+                    <li>👥 <strong>Gegner</strong> = Siehst du live in der Lobby</li>
+                </ul>
+
+                <div class="alert alert-warning mt-3">
+                    <strong>⚠️ Wichtig:</strong> Du kannst die Lobby jederzeit verlassen,
+                    aber während eines Spiels solltest du bis zum Ende bleiben!
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Verstanden!</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bootstrap JS Bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
     let stompClient = null;
@@ -289,9 +363,9 @@
             return;
         }
 
-        const wsUrl = '/quiz-websocket';
-        const socket = new SockJS(wsUrl);
-        stompClient = Stomp.over(socket);
+        const wsUrl = '/ws';
+    const socket = new SockJS(wsUrl);
+    stompClient = Stomp.over(socket);
 
         // Debug-Modus deaktivieren
         stompClient.debug = null;
@@ -308,6 +382,9 @@
 
                 // Nach Verbindung Subscriptions starten
                 setupSubscriptions();
+
+                // Lobby beitreten
+            joinLobby()
             },
             (error) => {
                 console.error('❌ WebSocket Fehler:', error);
@@ -378,6 +455,8 @@
         const joinBtn = document.getElementById('joinLobbyBtn');
         const leaveBtn = document.getElementById('leaveLobbyBtn');
         const categorySelect = document.getElementById('categorySelect');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const helpBtn = document.getElementById('helpBtn');
 
         if (joinBtn) {
             joinBtn.addEventListener('click', joinLobby);
@@ -389,6 +468,14 @@
 
         if (categorySelect) {
             categorySelect.addEventListener('change', handleCategoryChange);
+        }
+
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', logout);
+        }
+
+        if (helpBtn) {
+            helpBtn.addEventListener('click', showHelp);
         }
 
         console.log('✅ Event Listener initialisiert');
@@ -409,6 +496,57 @@
         } else {
             currentCategory = newCategory;
         }
+    }
+
+    // --- Logout function ---
+    function logout() {
+        console.log('🚪 Abmelden...');
+
+        // 1. Sicherstellen, dass Spieler die Lobby verlässt
+        if (isInLobby) {
+            leaveLobby();
+        }
+
+        // 2. WebSocket-Verbindung ordentlich schließen
+        if (stompClient && stompClient.connected) {
+            // Alle Subscriptions kündigen
+            if (lobbySubscription) {
+                lobbySubscription.unsubscribe();
+            }
+            if (gameMatchSubscription) {
+                gameMatchSubscription.unsubscribe();
+            }
+            if (lobbyStatusSubscription) {
+                lobbyStatusSubscription.unsubscribe();
+            }
+
+            // Verbindung trennen
+            stompClient.disconnect(() => {
+                console.log('🔌 WebSocket Verbindung geschlossen');
+            });
+        }
+
+        // 3. Alle lokalen Daten löschen
+        localStorage.removeItem('currentPlayer');
+        localStorage.removeItem('currentGame');
+        localStorage.removeItem('currentMatch');
+
+        // 4. Erfolgsmeldung und Weiterleitung
+        showNotification('👋 Erfolgreich abgemeldet!');
+
+        // Kurze Verzögerung für bessere UX
+        setTimeout(() => {
+            window.location.href = '/index.html';
+        }, 1000);
+    }
+
+    // --- Help function ---
+    function showHelp() {
+        // Bootstrap Modal anzeigen
+        const helpModal = new bootstrap.Modal(document.getElementById('helpModal'));
+        helpModal.show();
+
+        console.log('ℹ️ Hilfe angefordert');
     }
 
     // --- Join lobby ---
@@ -560,121 +698,121 @@
     }
 
     // --- Subscribe to game match updates ---
-function subscribeToGameMatch() {
-    if (!stompClient?.connected) return;
+    function subscribeToGameMatch() {
+        if (!stompClient?.connected) return;
 
-    // Subscription für Match-Benachrichtigungen
-    stompClient.subscribe('/user/queue/game.match', function(message) {
-        try {
-            const match = JSON.parse(message.body);
-            console.log('🎯 Match gefunden:', match);
+        // Subscription für Match-Benachrichtigungen
+        stompClient.subscribe('/user/queue/game.match', function(message) {
+            try {
+                const match = JSON.parse(message.body);
+                console.log('🎯 Match gefunden:', match);
 
-            if (!match.gameId) {
-                console.error('❌ Match hat keine gameId:', match);
-                return;
+                if (!match.gameId) {
+                    console.error('❌ Match hat keine gameId:', match);
+                    return;
+                }
+
+                // 1. Match speichern
+                localStorage.setItem('currentMatch', JSON.stringify(match));
+
+                // 2. UI umschalten
+                document.getElementById('matchInfo').classList.remove('d-none');
+                document.getElementById('queueInfo').classList.add('d-none');
+                document.getElementById('livePlayersContainer').classList.add('d-none');
+
+                // 3. Gegner anzeigen
+                const opponentInfo = document.getElementById('opponentInfo');
+                opponentInfo.innerHTML = `
+                    <div class="text-center">
+                        <img src="${match.opponent.profileImageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(match.opponent.username) + '&background=random&color=fff&size=60'}"
+                             class="player-avatar mb-2">
+                        <h5>${match.opponent.username}</h5>
+                        <small class="text-muted">
+                            Spiele: ${match.opponent.totalGames || 0}<br>
+                            Siege: ${match.opponent.gamesWon || 0}
+                        </small>
+                    </div>
+                `;
+
+                // 4. Auf Spiel-Topics subscriben
+                subscribeToGameTopics(match.gameId);
+
+                // 5. Countdown starten
+                startGameCountdown(match.gameId);
+
+            } catch (e) {
+                console.error('❌ Fehler bei Match-Verarbeitung:', e);
             }
+        });
 
-            // 1. Match speichern
-            localStorage.setItem('currentMatch', JSON.stringify(match));
+        // Subscription für Lobby-Status
+        stompClient.subscribe('/user/queue/lobby.status', function(message) {
+            const status = JSON.parse(message.body);
+            console.log('📊 Lobby Status:', status);
+            updateLobbyStatus(status);
+        });
+    }
 
-            // 2. UI umschalten
-            document.getElementById('matchInfo').classList.remove('d-none');
-            document.getElementById('queueInfo').classList.add('d-none');
-            document.getElementById('livePlayersContainer').classList.add('d-none');
+    // --- Subscribe to game topics ---
+    function subscribeToGameTopics(gameId) {
+        if (!stompClient?.connected) return;
 
-            // 3. Gegner anzeigen
-            const opponentInfo = document.getElementById('opponentInfo');
-            opponentInfo.innerHTML = `
-                <div class="text-center">
-                    <img src="${match.opponent.profileImageUrl || '/images/default-avatar.jpg'}"
-                         class="player-avatar mb-2">
-                    <h5>${match.opponent.username}</h5>
-                    <small class="text-muted">
-                        Spiele: ${match.opponent.totalGames || 0}<br>
-                        Siege: ${match.opponent.gamesWon || 0}
-                    </small>
-                </div>
-            `;
+        // Countdown-Topic
+        stompClient.subscribe('/topic/game/' + gameId + '/countdown', function(message) {
+            const data = JSON.parse(message.body);
+            console.log('⏱️ Countdown Update:', data);
 
-            // 4. Auf Spiel-Topics subscriben
-            subscribeToGameTopics(match.gameId);
+            if (data.type === 'COUNTDOWN') {
+                updateCountdownDisplay(data.seconds);
+            }
+        });
 
-            // 5. Countdown starten
-            startGameCountdown(match.gameId);
+        // Spiel-Start Topic
+        stompClient.subscribe('/topic/game/' + gameId, function(message) {
+            const data = JSON.parse(message.body);
+            console.log('🎮 Spiel-Update:', data);
 
-        } catch (e) {
-            console.error('❌ Fehler bei Match-Verarbeitung:', e);
-        }
-    });
-
-    // Subscription für Lobby-Status
-    stompClient.subscribe('/user/queue/lobby.status', function(message) {
-        const status = JSON.parse(message.body);
-        console.log('📊 Lobby Status:', status);
-        updateLobbyStatus(status);
-    });
-}
-
-// --- Subscribe to game topics ---
-function subscribeToGameTopics(gameId) {
-    if (!stompClient?.connected) return;
-
-    // Countdown-Topic
-    stompClient.subscribe('/topic/game/' + gameId + '/countdown', function(message) {
-        const data = JSON.parse(message.body);
-        console.log('⏱️ Countdown Update:', data);
-
-        if (data.type === 'COUNTDOWN') {
-            updateCountdownDisplay(data.seconds);
-        }
-    });
-
-    // Spiel-Start Topic
-    stompClient.subscribe('/topic/game/' + gameId, function(message) {
-        const data = JSON.parse(message.body);
-        console.log('🎮 Spiel-Update:', data);
-
-        if (data.type === 'GAME_START') {
-            // Sofort zum Spiel weiterleiten
-            localStorage.setItem('currentGame', JSON.stringify(data));
-            window.location.href = '/game.html?gameId=' + gameId;
-        }
-    });
-}
-
-// --- Start game countdown ---
-function startGameCountdown(gameId) {
-    let countdown = 5;
-    const countdownElement = document.getElementById('countdown');
-    const countdownProgress = document.getElementById('countdownProgress');
-
-    if (gameStartCountdown) clearInterval(gameStartCountdown);
-
-    gameStartCountdown = setInterval(() => {
-        countdown--;
-
-        if (countdownElement) countdownElement.textContent = countdown;
-        if (countdownProgress) countdownProgress.style.width = (countdown * 20) + '%';
-
-        if (countdown <= 0) {
-            clearInterval(gameStartCountdown);
-
-            // Optional: Direkt weiterleiten, falls kein Start-Signal kommt
-            setTimeout(() => {
+            if (data.type === 'GAME_START') {
+                // Sofort zum Spiel weiterleiten
+                localStorage.setItem('currentGame', JSON.stringify(data));
                 window.location.href = '/game.html?gameId=' + gameId;
-            }, 1000);
-        }
-    }, 1000);
-}
+            }
+        });
+    }
 
-// --- Update countdown display ---
-function updateCountdownDisplay(seconds) {
-    const countdownElement = document.getElementById('countdown');
-    const countdownProgress = document.getElementById('countdownProgress');
+    // --- Start game countdown ---
+    function startGameCountdown(gameId) {
+        let countdown = 5;
+        const countdownElement = document.getElementById('countdown');
+        const countdownProgress = document.getElementById('countdownProgress');
 
-    if (countdownElement) countdownElement.textContent = seconds;
-    if (countdownProgress) countdownProgress.style.width = (seconds * 20) + '%';
-}
+        if (gameStartCountdown) clearInterval(gameStartCountdown);
+
+        gameStartCountdown = setInterval(() => {
+            countdown--;
+
+            if (countdownElement) countdownElement.textContent = countdown;
+            if (countdownProgress) countdownProgress.style.width = (countdown * 20) + '%';
+
+            if (countdown <= 0) {
+                clearInterval(gameStartCountdown);
+
+                // Optional: Direkt weiterleiten, falls kein Start-Signal kommt
+                setTimeout(() => {
+                    window.location.href = '/game.html?gameId=' + gameId;
+                }, 1000);
+            }
+        }, 1000);
+    }
+
+    // --- Update countdown display ---
+    function updateCountdownDisplay(seconds) {
+        const countdownElement = document.getElementById('countdown');
+        const countdownProgress = document.getElementById('countdownProgress');
+
+        if (countdownElement) countdownElement.textContent = seconds;
+        if (countdownProgress) countdownProgress.style.width = (seconds * 20) + '%';
+    }
 
     // --- Live players display ---
     function updateLivePlayersDisplay(update) {
@@ -688,10 +826,15 @@ function updateCountdownDisplay(seconds) {
                 const isCurrent = currentPlayer && playerId === currentPlayer.id;
                 const playerName = isCurrent ? currentPlayer.username : `Spieler ${index + 1}`;
 
+                // Verwende UI-Avatars als Fallback für fehlende Bilder
+                const avatarUrl = isCurrent ?
+                    (currentPlayer.profileImageUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(currentPlayer.username)}&background=random&color=fff&size=60`) :
+                    `https://ui-avatars.com/api/?name=Spieler+${index+1}&background=6c757d&color=fff&size=60`;
+
                 html += `
                     <div class="live-player-card ${isCurrent ? 'player-join-animation' : ''}">
                         <div class="d-flex align-items-center">
-                            <img src="${isCurrent ? (currentPlayer.profileImageUrl || '/images/default-avatar.jpg') : '/images/default-avatar.jpg'}"
+                            <img src="${avatarUrl}"
                                  class="player-avatar me-3">
                             <div>
                                 <h6>${playerName}
@@ -740,7 +883,7 @@ function updateCountdownDisplay(seconds) {
         const opponentInfo = document.getElementById('opponentInfo');
         opponentInfo.innerHTML = `
             <div class="text-center">
-                <img src="${match.opponent.profileImageUrl || '/images/default-avatar.jpg'}"
+                <img src="${match.opponent.profileImageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(match.opponent.username) + '&background=random&color=fff&size=60'}"
                      class="player-avatar mb-2">
                 <h5>${match.opponent.username}</h5>
                 <small class="text-muted">
@@ -811,6 +954,45 @@ function updateCountdownDisplay(seconds) {
         console.log('=== DEBUG JOIN LOBBY ===');
         joinLobby();
     };
+
+function debugWebSocket() {
+    console.log('=== WEBSOCKET DEBUG ===');
+    console.log('STOMP Client:', window.stompClient);
+    console.log('Connected:', window.stompClient?.connected);
+    console.log('Subscriptions:', Object.keys(window.stompClient?.subscriptions || {}));
+
+    // Manuell Test-Subscription
+    if (window.stompClient && window.stompClient.connected) {
+        // Debug-Subscription
+        const debugSub = window.stompClient.subscribe('/user/queue/debug',
+            function(message) {
+                console.log('🔥 DEBUG MESSAGE:', JSON.parse(message.body));
+            }
+        );
+
+        // Test-Match-Subscription
+        const matchSub = window.stompClient.subscribe('/user/queue/game.match',
+            function(message) {
+                console.log('🎯 MATCH MESSAGE RECEIVED:', JSON.parse(message.body));
+                alert('MATCH GEFUNDEN! ' + JSON.stringify(JSON.parse(message.body), null, 2));
+            }
+        );
+
+        // Lobby-Subscription
+        const lobbySub = window.stompClient.subscribe('/topic/lobby/' + currentCategory,
+            function(message) {
+                console.log('🔄 LOBBY UPDATE:', JSON.parse(message.body));
+            }
+        );
+
+        console.log('Debug subscriptions created');
+
+        // Sende Test-Request
+        fetch(`/api/debug/send-test/${currentPlayerId}`)
+            .then(r => r.text())
+            .then(console.log);
+    }
+}
 </script>
 </body>
 </html>

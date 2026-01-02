@@ -34,26 +34,32 @@ public class GameWebSocketController {
     @MessageMapping("/game.join")
     public void handleJoinLobby(@Payload JoinLobbyRequest request) {
         try {
-            log.info("🎮 Spieler {} möchte Lobby {} betreten",
+            log.info("🎮 SPIELER {} MÖCHTE LOBBY '{}' BEITRETEN (Session aktualisieren)",
                     request.getPlayerId(), request.getCategory());
 
-            // 1. Spieler der Lobby hinzufügen
+            // 1. Lobby-Update an alle senden (vor dem Beitritt, falls nötig)
+            broadcastLobbyUpdate(request.getCategory());
+
+            // 2. Spieler der Lobby hinzufügen
             LobbyStatusDTO lobbyStatus = lobbyService.joinLobby(
                     request.getPlayerId(),
                     request.getCategory()
             );
 
-            // 2. Status an Spieler senden
+            // 3. Status an Spieler senden
             messagingTemplate.convertAndSendToUser(
                     request.getPlayerId().toString(),
                     "/queue/lobby.status",
                     lobbyStatus
             );
 
-            // 3. Lobby-Update an alle senden
+            log.info("📤 Lobby-Status an Spieler {} gesendet: {}",
+                    request.getPlayerId(), lobbyStatus.getStatus());
+
+            // 4. Lobby-Update an alle senden
             broadcastLobbyUpdate(request.getCategory());
 
-            // 4. Matchmaking prüfen (nur wenn genug Spieler)
+            // 5. Matchmaking prüfen (nur wenn genug Spieler)
             checkForMatch(request.getCategory());
 
         } catch (Exception e) {
@@ -65,7 +71,7 @@ public class GameWebSocketController {
     @MessageMapping("/game.leave")
     public void handleLeaveLobby(@Payload JoinLobbyRequest request) {
         try {
-            log.info("🚪 Spieler {} verlässt Lobby {}",
+            log.info("🚪 SPIELER {} VERLÄSST LOBBY {}",
                     request.getPlayerId(), request.getCategory());
 
             lobbyService.leaveLobby(request.getPlayerId(), request.getCategory());
@@ -161,35 +167,71 @@ public class GameWebSocketController {
     // ========== PRIVATE HELPER METHODS ==========
 
     private void checkForMatch(String category) {
-        Optional<LobbyService.MatchResult> matchOpt =
-                lobbyService.checkAndCreateMatch(category);
+        log.info("🔍 PRÜFE MATCH FÜR KATEGORIE: {}", category);
+
+        Optional<LobbyService.MatchResult> matchOpt = lobbyService.checkAndCreateMatch(category);
 
         if (matchOpt.isPresent()) {
             LobbyService.MatchResult match = matchOpt.get();
-            log.info("✅ Match gefunden: {} vs {} (Kategorie: {})",
+            log.info("✅ MATCH GEFUNDEN: {} vs {} (Kategorie: {})",
                     match.player1Id, match.player2Id, match.category);
 
-            // Spiel erstellen
-            Game game = gameService.createGame(
-                    match.player1Id,
-                    match.player2Id,
-                    match.category
-            );
+            try {
+                // Spiel erstellen
+                Game game = gameService.createGame(
+                        match.player1Id,
+                        match.player2Id,
+                        match.category
+                );
 
-            // Spieler benachrichtigen
-            notifyMatchFound(game, match.player1Id, match.player2Id);
+                log.info("🎮 SPIEL ERSTELLT: ID {}", game.getId());
 
-            // Countdown starten
-            startGameCountdownAsync(game);
+                // Spieler aus Lobby entfernen (nach erfolgreichem Spiel-Erstellen)
+                lobbyService.removePlayersAfterMatch(
+                        match.player1Id,
+                        match.player2Id,
+                        match.category
+                );
+
+                // Spieler benachrichtigen
+                notifyMatchFound(game, match.player1Id, match.player2Id);
+
+                // Countdown starten
+                startGameCountdownAsync(game);
+
+                // Lobby-Update broadcasten
+                broadcastLobbyUpdate(category);
+
+            } catch (Exception e) {
+                log.error("❌ FEHLER BEIM ERSTELLEN DES SPIELS: {}", e.getMessage(), e);
+
+                // Matchmaking zurücksetzen
+                lobbyService.resetMatchmaking(
+                        match.player1Id,
+                        match.player2Id,
+                        match.category
+                );
+
+                // Fehler an Spieler senden
+                sendError(match.player1Id, "Fehler beim Spielstart: " + e.getMessage());
+                sendError(match.player2Id, "Fehler beim Spielstart: " + e.getMessage());
+
+                // Lobby-Update broadcasten
+                broadcastLobbyUpdate(category);
+            }
+        } else {
+            log.debug("⏳ KEIN MATCH IN LOBBY {} GEFUNDEN", category);
         }
     }
 
     private void notifyMatchFound(Game game, Long player1Id, Long player2Id) {
-        log.info("🎯 SENDING MATCH NOTIFICATION: Game {} for players {} and {}",
+        log.info("🎯 SENDE MATCH-NOTIFICATION: Spiel {} für Spieler {} und {}",
                 game.getId(), player1Id, player2Id);
 
-        Player player1 = playerRepository.findById(player1Id).orElseThrow();
-        Player player2 = playerRepository.findById(player2Id).orElseThrow();
+        Player player1 = playerRepository.findById(player1Id).orElseThrow(() ->
+                new RuntimeException("Spieler " + player1Id + " nicht gefunden"));
+        Player player2 = playerRepository.findById(player2Id).orElseThrow(() ->
+                new RuntimeException("Spieler " + player2Id + " nicht gefunden"));
 
         // Spieler 1 benachrichtigen
         GameMatchMessage matchMsg1 = new GameMatchMessage(
@@ -205,23 +247,43 @@ public class GameWebSocketController {
                 game.getCategory()
         );
 
+        log.info("📨 Nachricht an Spieler {}: {}", player1Id, matchMsg1);
+        log.info("📨 Nachricht an Spieler {}: {}", player2Id, matchMsg2);
+
+        // An Spieler 1 senden
         messagingTemplate.convertAndSendToUser(
                 player1Id.toString(),
                 "/queue/game.match",
                 matchMsg1
         );
 
+        // An Spieler 2 senden
         messagingTemplate.convertAndSendToUser(
                 player2Id.toString(),
                 "/queue/game.match",
                 matchMsg2
         );
 
-        log.info("✅ Match notifications sent to /queue/game.match");    }
+        log.info("✅ Match notifications an /queue/game.match gesendet");
+
+        // DEBUG: Sende auch an Topic für Debug-Zwecke
+        messagingTemplate.convertAndSend(
+                "/topic/debug/match",
+                Map.of(
+                        "type", "DEBUG_MATCH",
+                        "gameId", game.getId(),
+                        "player1Id", player1Id,
+                        "player2Id", player2Id,
+                        "timestamp", System.currentTimeMillis()
+                )
+        );
+    }
 
     @Async
     public void startGameCountdownAsync(Game game) {
         try {
+            log.info("⏱️ STARTE COUNTDOWN FÜR SPIEL {}", game.getId());
+
             // 5-Sekunden Countdown
             for (int i = 5; i > 0; i--) {
                 Map<String, Object> countdownMsg = Map.of(
@@ -237,6 +299,8 @@ public class GameWebSocketController {
                 );
                 Thread.sleep(1000);
             }
+
+            log.info("🚀 SPIEL {} STARTET JETZT", game.getId());
 
             // Spiel starten
             gameService.startGame(game.getId());
@@ -264,13 +328,14 @@ public class GameWebSocketController {
                     startMsg
             );
 
-            log.info("🎮 Spiel {} gestartet", game.getId());
+            log.info("🎮 SPIEL {} GESTARTET mit Spieler {} vs {}",
+                    game.getId(), game.getPlayer1().getId(), game.getPlayer2().getId());
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("❌ Countdown unterbrochen");
         } catch (Exception e) {
-            log.error("❌ Fehler beim Spielstart: {}", e.getMessage());
+            log.error("❌ Fehler beim Spielstart: {}", e.getMessage(), e);
         }
     }
 
@@ -282,12 +347,18 @@ public class GameWebSocketController {
         String answer2 = playerAnswers.get(game.getId() + player2Id);
 
         if (answer1 != null && answer2 != null) {
+            log.info("✅ BEIDE SPIELER HABEN GEANTWORTET für Runde {}", roundNumber);
+
             // Beide haben geantwortet - Punkte berechnen
             calculateRoundPoints(game, roundNumber, answer1, answer2);
 
             // Antworten für diese Runde löschen
             playerAnswers.remove(game.getId() + player1Id);
             playerAnswers.remove(game.getId() + player2Id);
+        } else {
+            log.debug("⏳ Warte auf Antworten: Spieler1={}, Spieler2={}",
+                    answer1 != null ? "✅" : "❌",
+                    answer2 != null ? "✅" : "❌");
         }
     }
 
@@ -332,7 +403,7 @@ public class GameWebSocketController {
                     )
             );
 
-            log.info("📊 Runde {} Ergebnis: Spieler1={} Punkte, Spieler2={} Punkte",
+            log.info("📊 RUNDE {} ERGEBNIS: Spieler1={} Punkte, Spieler2={} Punkte",
                     roundNumber, points1, points2);
 
             // Wenn letzte Runde, Spiel beenden
@@ -347,6 +418,8 @@ public class GameWebSocketController {
 
     private void finishGame(Game game) {
         try {
+            log.info("🏁 BEENDE SPIEL {}", game.getId());
+
             // Spiel beenden
             gameService.finishGame(game.getId());
 
@@ -366,7 +439,7 @@ public class GameWebSocketController {
                     endMsg
             );
 
-            log.info("🏁 Spiel {} beendet. Sieger: {}", game.getId(),
+            log.info("🏁 SPIEL {} BEENDET. Sieger: {}", game.getId(),
                     game.getWinner() != null ? game.getWinner().getUsername() : "Unentschieden");
 
         } catch (Exception e) {
@@ -409,26 +482,34 @@ public class GameWebSocketController {
     }
 
     private void broadcastLobbyUpdate(String category) {
-        LobbyService.LobbyInfo lobbyInfo = lobbyService.getLobbyInfo(category);
+        try {
+            LobbyService.LobbyInfo lobbyInfo = lobbyService.getLobbyInfo(category);
 
-        Map<String, Object> update = Map.of(
-                "type", "LOBBY_UPDATE",
-                "category", category,
-                "playerCount", lobbyInfo.playerCount,
-                "playerIds", lobbyInfo.playerIds,
-                "timestamp", System.currentTimeMillis()
-        );
+            Map<String, Object> update = Map.of(
+                    "type", "LOBBY_UPDATE",
+                    "category", category,
+                    "playerCount", lobbyInfo.playerCount,
+                    "playerIds", lobbyInfo.playerIds,
+                    "timestamp", System.currentTimeMillis()
+            );
 
-        messagingTemplate.convertAndSend(
-                "/topic/lobby/" + category,
-                update
-        );
+            log.debug("📡 BROADCAST LOBBY UPDATE für {}: {} Spieler",
+                    category, lobbyInfo.playerCount);
+
+            messagingTemplate.convertAndSend(
+                    "/topic/lobby/" + category,
+                    update
+            );
+        } catch (Exception e) {
+            log.error("❌ Fehler beim Broadcast Lobby Update: {}", e.getMessage());
+        }
     }
 
     private void sendError(Long playerId, String message) {
-        Map<String, String> error = Map.of(
+        Map<String, Object> error = Map.of(
                 "type", "ERROR",
-                "message", message
+                "message", message,
+                "timestamp", System.currentTimeMillis()
         );
 
         messagingTemplate.convertAndSendToUser(
@@ -436,6 +517,8 @@ public class GameWebSocketController {
                 "/queue/errors",
                 error
         );
+
+        log.warn("⚠️ Fehler an Spieler {} gesendet: {}", playerId, message);
     }
 
     private PlayerDTO convertToPlayerDTO(Player player) {
