@@ -242,7 +242,14 @@
   <div class="question-card">
     <div class="text-center mb-4">
       <h3 id="questionCategory" class="badge bg-secondary"></h3>
-      <h1 id="questionText" class="my-4">Frage wird geladen...</h1>
+      <h2 id="questionText">Frage wird geladen...</h2>
+
+      <div id="answers">
+        <button class="answer-btn" data-answer="A" id="answerA">A: ...</button>
+        <button class="answer-btn" data-answer="B" id="answerB">B: ...</button>
+        <button class="answer-btn" data-answer="C" id="answerC">C: ...</button>
+        <button class="answer-btn" data-answer="D" id="answerD">D: ...</button>
+      </div>
     </div>
 
     <!-- Timer -->
@@ -360,6 +367,10 @@
       loadGameData();
       connectWebSocket();
       setupEventListeners();
+
+    // HIER: Fragen laden, sobald Spiel/Kategorie bekannt ist
+    // Wenn currentGame noch nicht da ist, ist es trotzdem okay: wir laden erstmal alle.
+    loadQuestionsFromApi(currentGame?.category);
   };
 
   function loadGameData() {
@@ -399,6 +410,62 @@
               console.error('Fehler beim Laden des Spiels:', error);
               addGameLog('❌ Spiel konnte nicht geladen werden');
           });
+  }
+
+  // ================================
+  // FRAGEN LADEN (REST) + RENDER
+  // ================================
+
+  // Hier speichern wir Fragen lokal
+  let questions = [];
+  let currentQuestionIndex = 0;
+
+  // Lädt Fragen aus deinem Backend (MySQL via JPA)
+  async function loadQuestionsFromApi(category) {
+    try {
+      // Optional: Wenn du später nach Kategorie filtern willst:
+      // const url = category ? `/api/questions?category=${encodeURIComponent(category)}` : `/api/questions`;
+
+      const url = `/api/questions`;
+      const res = await fetch(url);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status} bei ${url}`);
+
+      questions = await res.json();
+      console.log("✅ Fragen geladen:", questions);
+
+      if (!questions || questions.length === 0) {
+        elements.questionText.textContent = "Keine Fragen gefunden.";
+        return;
+      }
+
+      currentQuestionIndex = 0;
+      displayQuestionFromDb(questions[currentQuestionIndex]);
+
+    } catch (err) {
+      console.error("❌ Fragen laden fehlgeschlagen:", err);
+      elements.questionText.textContent = "Fehler beim Laden der Frage.";
+    }
+  }
+
+  // Rendert eine DB-Frage in DEIN UI (passt zu QuestionPublicDTO)
+  function displayQuestionFromDb(q) {
+    // Text + Kategorie
+    elements.questionText.textContent = q.questionText ?? "Fragetext fehlt";
+    elements.questionCategory.textContent = q.category ?? (currentGame?.category ?? "");
+
+    // Buttons füllen
+    document.getElementById("answerA").textContent = `A: ${q.optionA ?? "-"}`;
+    document.getElementById("answerB").textContent = `B: ${q.optionB ?? "-"}`;
+    document.getElementById("answerC").textContent = `C: ${q.optionC ?? "-"}`;
+    document.getElementById("answerD").textContent = `D: ${q.optionD ?? "-"}`;
+
+    // Wichtig: deine bestehende Grid-AnswerOptions (mit wrongAnswers etc.) deaktivieren/leer lassen
+    elements.answerOptions.innerHTML = "";
+
+    // Runde resetten (damit Button states stimmen)
+    selectedAnswer = null;
+    elements.submitAnswerBtn.disabled = true;
   }
 
   function connectWebSocket() {
@@ -485,11 +552,18 @@
       elements.currentRound.textContent = `Runde ${currentRound}/${TOTAL_ROUNDS}`;
 
       // Frage anzeigen
-      if (roundData.question) {
-          displayQuestion(roundData.question);
-      }
+    // Frage anzeigen (DB-Flow)
+    if (questions && questions.length > 0) {
+      displayQuestionFromDb(questions[currentQuestionIndex]);
+      currentQuestionIndex = (currentQuestionIndex + 1) % questions.length; // nächste Frage vorbereiten
+    } else {
+      elements.questionText.textContent = "Fragen werden geladen...";
+    }
 
-      // Timer starten
+
+
+
+    // Timer starten
       startTimer(roundData.timeLimit || 30000);
 
       addGameLog(`📊 Runde ${currentRound} gestartet!`);
@@ -698,6 +772,19 @@
   function setupEventListeners() {
       elements.submitAnswerBtn.addEventListener('click', submitAnswer);
       elements.nextRoundBtn.addEventListener('click', nextRound);
+
+    // Antwort-Buttons A-D klicken (DB-Format)
+    document.getElementById("answerA").addEventListener("click", () => pickLetter("A"));
+    document.getElementById("answerB").addEventListener("click", () => pickLetter("B"));
+    document.getElementById("answerC").addEventListener("click", () => pickLetter("C"));
+    document.getElementById("answerD").addEventListener("click", () => pickLetter("D"));
+
+    function pickLetter(letter) {
+      selectedAnswer = letter; // Du sendest dann "A/B/C/D" an den Server
+      elements.submitAnswerBtn.disabled = false;
+      console.log("🟦 Auswahl:", selectedAnswer);
+    }
+
   }
 
   function resetRound() {

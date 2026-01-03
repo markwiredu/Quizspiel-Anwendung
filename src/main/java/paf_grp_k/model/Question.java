@@ -22,40 +22,28 @@ public class Question {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * Text der Frage.
-     * Kann bis zu 1000 Zeichen lang sein.
-     */
-    @Column(length = 1000)
+    // DB: question_text
+    @Column(name = "question_text", length = 1000)
     private String questionText;
 
-    /**
-     * Antwortoption A.
-     */
+    // DB: optiona / optionb / optionc / optiond (alles klein!)
+    @Column(name = "optiona")
     private String optionA;
 
-    /**
-     * Antwortoption B.
-     */
+    @Column(name = "optionb")
     private String optionB;
 
-    /**
-     * Antwortoption C.
-     */
+    @Column(name = "optionc")
     private String optionC;
 
-    /**
-     * Antwortoption D.
-     */
+    @Column(name = "optiond")
     private String optionD;
 
-    /**
-     * Korrekte Antwort. Erwartete Werte: "A", "B", "C" oder "D".
-     */
+    // DB: correct_answer
+    @Column(name = "correct_answer")
     private String correctAnswer;
 
-    /**
-     * Kategorie der Frage, z. B. "Sport", "Geschichte".
-     */
+    // DB: category
+    @Column(name = "category")
     private String category;
 }
