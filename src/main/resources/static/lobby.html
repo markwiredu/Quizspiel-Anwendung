@@ -201,8 +201,8 @@
 
         <!-- Lobby Actions -->
         <div class="d-grid gap-2 mb-4">
-            <button id="joinLobbyBtn" class="btn btn-primary btn-lg">
-                🎯 Lobby betreten
+            <button id="joinLobbyBtn" class="btn btn-primary btn-lg" disabled>
+                Verbinde mit Server...
             </button>
             <button id="leaveLobbyBtn" class="btn btn-outline-danger d-none">
                 ❌ Lobby verlassen
@@ -247,6 +247,10 @@
             </a>
             <button id="helpBtn" class="btn btn-outline-info">
                 ❓ Hilfe
+            </button>
+            <!-- Füge diesen Button nach dem Hilfe-Button ein: -->
+            <button onclick="debugSendMatch()" class="btn btn-outline-warning mt-2">
+                🔧 Debug: Manuelles Match senden
             </button>
         </div>
     </div>
@@ -353,102 +357,120 @@
     }
 
     // --- Connect WebSocket ---
-    function connectWebSocket() {
-        console.log('🔌 Starte WebSocket Verbindung...');
+   function connectWebSocket() {
+    console.log('🔌 Starte WebSocket Verbindung...');
 
-        if (typeof SockJS === 'undefined' || typeof Stomp === 'undefined') {
-            console.error('❌ WebSocket-Bibliotheken nicht verfügbar!');
-            showNotification('❌ WebSocket-Bibliothek konnte nicht geladen werden. Bitte Seite neu laden.');
-            setTimeout(connectWebSocket, 3000);
-            return;
-        }
+    if (typeof SockJS === 'undefined' || typeof Stomp === 'undefined') {
+        console.error('❌ WebSocket-Bibliotheken nicht verfügbar!');
+        showNotification('❌ WebSocket-Bibliothek konnte nicht geladen werden. Bitte Seite neu laden.');
+        setTimeout(connectWebSocket, 3000);
+        return;
+    }
 
-        const wsUrl = '/ws';
+    const wsUrl = '/ws';
     const socket = new SockJS(wsUrl);
     stompClient = Stomp.over(socket);
 
-        // Debug-Modus deaktivieren
-        stompClient.debug = null;
+    // Debug-Modus deaktivieren
+    stompClient.debug = null;
 
-        const connectHeaders = {
-            login: currentPlayer?.username || 'guest',
-            passcode: 'nopassword'
-        };
+    const connectHeaders = {
+        login: currentPlayer?.username || 'guest',
+        passcode: 'nopassword'
+    };
 
-        stompClient.connect(connectHeaders,
-            (frame) => {
-                console.log('✅ WebSocket verbunden!', frame);
-                showNotification('✅ Mit Server verbunden');
+    stompClient.connect(connectHeaders,
+        (frame) => {
+            console.log('✅ WebSocket verbunden!', frame);
+            showNotification('✅ Mit Server verbunden');
 
-                // Nach Verbindung Subscriptions starten
+            // WICHTIG: Verzögerung für User-Principal
+            setTimeout(() => {
+                // Subscriptions einrichten
                 setupSubscriptions();
 
-                // Lobby beitreten
-            joinLobby()
-            },
-            (error) => {
-                console.error('❌ WebSocket Fehler:', error);
-                showNotification('❌ Verbindung zum Server fehlgeschlagen');
-
-                // Wiederholung nach 5 Sekunden
+                // Nochmal kurze Verzögerung für Subscription-Propagation
                 setTimeout(() => {
-                    console.log('🔄 Versuche erneute Verbindung...');
-                    connectWebSocket();
-                }, 5000);
-            }
-        );
-    }
+                    console.log('✅ Alle Subscriptions aktiv');
 
-    // --- Setup all subscriptions ---
+                    // Button aktivieren
+                    document.getElementById('joinLobbyBtn').disabled = false;
+                    document.getElementById('joinLobbyBtn').textContent = '🎯 Lobby betreten';
+                }, 300);
+            }, 500);
+        },
+        (error) => {
+            console.error('❌ WebSocket Fehler:', error);
+            showNotification('❌ Verbindung zum Server fehlgeschlagen');
+            document.getElementById('joinLobbyBtn').disabled = true;
+            document.getElementById('joinLobbyBtn').textContent = 'Verbindung fehlgeschlagen';
+
+            // Wiederholung nach 5 Sekunden
+            setTimeout(() => {
+                console.log('🔄 Versuche erneute Verbindung...');
+                connectWebSocket();
+            }, 5000);
+        }
+    );
+}
+
     function setupSubscriptions() {
-        // 1. Lobby Updates für die aktuelle Kategorie
-        if (lobbySubscription) {
-            lobbySubscription.unsubscribe();
-        }
+    console.log('🔔 Setup Subscriptions für Spieler:', currentPlayer.id);
 
-        const category = currentCategory === 'ALL' ? 'DEFAULT' : currentCategory;
-        lobbySubscription = stompClient.subscribe('/topic/lobby/' + category, (message) => {
-            try {
-                const update = JSON.parse(message.body);
-                console.log('🎪 Lobby Update:', update);
-                handleLobbyUpdate(update);
-            } catch (e) {
-                console.error('❌ Fehler beim Verarbeiten des Lobby-Updates:', e);
-            }
-        });
+    // 1. Lobby Updates für die aktuelle Kategorie
+    const category = currentCategory === 'ALL' ? 'DEFAULT' : currentCategory;
 
-        // 2. Game Match Updates (user-specific)
-        if (gameMatchSubscription) {
-            gameMatchSubscription.unsubscribe();
-        }
-
-        gameMatchSubscription = stompClient.subscribe('/user/queue/game.match', (message) => {
-            try {
-                const match = JSON.parse(message.body);
-                console.log('🎯 Game Match erhalten:', match);
-                handleGameMatch(match);
-            } catch (e) {
-                console.error('❌ Fehler beim Verarbeiten des Match-Updates:', e);
-            }
-        });
-
-        // 3. Lobby Status Updates (user-specific)
-        if (lobbyStatusSubscription) {
-            lobbyStatusSubscription.unsubscribe();
-        }
-
-        lobbyStatusSubscription = stompClient.subscribe('/user/queue/lobby.status', (message) => {
-            try {
-                const status = JSON.parse(message.body);
-                console.log('📊 Lobby Status erhalten:', status);
-                updateLobbyStatus(status);
-            } catch (e) {
-                console.error('❌ Fehler beim Verarbeiten des Status-Updates:', e);
-            }
-        });
-
-        console.log('✅ Alle Subscriptions eingerichtet');
+    if (lobbySubscription) {
+        lobbySubscription.unsubscribe();
     }
+
+    lobbySubscription = stompClient.subscribe('/topic/lobby/' + category, (message) => {
+        try {
+            const update = JSON.parse(message.body);
+            console.log('🎪 Lobby Update:', update);
+            handleLobbyUpdate(update);
+        } catch (e) {
+            console.error('❌ Fehler beim Verarbeiten des Lobby-Updates:', e);
+        }
+    });
+
+    // 2. WICHTIG: Abonniere das player-spezifische Topic für Matches
+    if (gameMatchSubscription) {
+        gameMatchSubscription.unsubscribe();
+    }
+
+    gameMatchSubscription = stompClient.subscribe('/topic/game/match/player/' + currentPlayer.id, (message) => {
+        try {
+            const match = JSON.parse(message.body);
+            console.log('🎯 MATCH GEFUNDEN über player-specific topic:', match);
+            handleGameMatch(match);
+        } catch (e) {
+            console.error('❌ Fehler beim Verarbeiten des Match-Updates:', e);
+        }
+    });
+
+    // 3. Zusätzlich: Allgemeines Match-Topic
+    stompClient.subscribe('/topic/game/match/found', (message) => {
+        console.log('🎯 Allgemeines Match-Topic:', JSON.parse(message.body));
+    });
+
+    // 4. Lobby Status (falls benötigt)
+    if (lobbyStatusSubscription) {
+        lobbyStatusSubscription.unsubscribe();
+    }
+
+    lobbyStatusSubscription = stompClient.subscribe('/user/queue/lobby.status', (message) => {
+        try {
+            const status = JSON.parse(message.body);
+            console.log('📊 Lobby Status:', status);
+            updateLobbyStatus(status);
+        } catch (e) {
+            console.error('❌ Fehler beim Status-Update:', e);
+        }
+    });
+
+    console.log('✅ Subscriptions für Spieler ' + currentPlayer.id + ' eingerichtet');
+}
 
     // --- Initialize event listeners ---
     function initializeEventListeners() {
@@ -551,48 +573,62 @@
 
     // --- Join lobby ---
     function joinLobby() {
-        console.log('🎯 Join Lobby Funktion aufgerufen');
+    console.log('🎯 Join Lobby Funktion aufgerufen');
 
-        if (!currentPlayer?.id) {
-            showNotification('❌ Bitte erst einloggen!');
-            return;
-        }
-
-        if (!stompClient || !stompClient.connected) {
-            showNotification('❌ Keine Verbindung zum Server');
-            return;
-        }
-
-        currentCategory = document.getElementById('categorySelect').value;
-
-        // UI aktualisieren
-        document.getElementById('joinLobbyBtn').classList.add('d-none');
-        document.getElementById('leaveLobbyBtn').classList.remove('d-none');
-        document.getElementById('categorySelect').disabled = true;
-        document.getElementById('queueInfo').classList.remove('d-none');
-        document.getElementById('livePlayersContainer').classList.remove('d-none');
-
-        updateLobbyStatus({
-            status: 'WAITING',
-            message: 'Verbinde mit Lobby...'
-        });
-
-        // Join-Request an Backend senden
-        const joinRequest = {
-            playerId: currentPlayer.id,
-            username: currentPlayer.username,
-            category: currentCategory
-        };
-
-        console.log('📤 Sende Join Request:', joinRequest);
-        stompClient.send("/app/game.join", {}, JSON.stringify(joinRequest));
-
-        // Setup subscriptions für die neue Kategorie
-        setupSubscriptions();
-
-        isInLobby = true;
-        showNotification('✅ Lobby betreten! Suche nach Gegner...');
+    if (!currentPlayer?.id) {
+        showNotification('❌ Bitte erst einloggen!');
+        return;
     }
+
+    if (!stompClient || !stompClient.connected) {
+        showNotification('❌ Keine Verbindung zum Server');
+        return;
+    }
+
+    // VALIDIERUNG: Sind Subscriptions da?
+    if (!gameMatchSubscription) {
+        console.error('❌ Match Subscription nicht vorhanden!');
+        showNotification('❌ Fehler: WebSocket nicht bereit. Bitte warten...');
+
+        // Versuche Subscriptions neu zu erstellen
+        setTimeout(() => {
+            setupSubscriptions();
+            setTimeout(() => {
+                if (gameMatchSubscription) {
+                    joinLobby(); // Erneut versuchen
+                }
+            }, 500);
+        }, 500);
+        return;
+    }
+
+    currentCategory = document.getElementById('categorySelect').value;
+
+    // UI aktualisieren
+    document.getElementById('joinLobbyBtn').classList.add('d-none');
+    document.getElementById('leaveLobbyBtn').classList.remove('d-none');
+    document.getElementById('categorySelect').disabled = true;
+    document.getElementById('queueInfo').classList.remove('d-none');
+    document.getElementById('livePlayersContainer').classList.remove('d-none');
+
+    updateLobbyStatus({
+        status: 'WAITING',
+        message: 'Verbinde mit Lobby...'
+    });
+
+    // Join-Request an Backend senden
+    const joinRequest = {
+        playerId: currentPlayer.id,
+        username: currentPlayer.username,
+        category: currentCategory
+    };
+
+    console.log('📤 Sende Join Request:', joinRequest);
+    stompClient.send("/app/game.join", {}, JSON.stringify(joinRequest));
+
+    isInLobby = true;
+    showNotification('✅ Lobby betreten! Suche nach Gegner...');
+}
 
     // --- Leave lobby ---
     function leaveLobby() {
@@ -955,43 +991,141 @@
         joinLobby();
     };
 
-function debugWebSocket() {
-    console.log('=== WEBSOCKET DEBUG ===');
-    console.log('STOMP Client:', window.stompClient);
-    console.log('Connected:', window.stompClient?.connected);
-    console.log('Subscriptions:', Object.keys(window.stompClient?.subscriptions || {}));
+window.debugWebSocket = function() {
+    console.log('=== WEBSOCKET DEBUG INFO ===');
+    console.log('Stomp Client:', stompClient);
+    console.log('Connected:', stompClient?.connected);
+    console.log('Current Player:', currentPlayer);
+    console.log('Current Player ID:', currentPlayer?.id);
+    console.log('Is in Lobby:', isInLobby);
+    console.log('Current Category:', currentCategory);
 
-    // Manuell Test-Subscription
-    if (window.stompClient && window.stompClient.connected) {
-        // Debug-Subscription
-        const debugSub = window.stompClient.subscribe('/user/queue/debug',
-            function(message) {
-                console.log('🔥 DEBUG MESSAGE:', JSON.parse(message.body));
-            }
-        );
+    if (stompClient && stompClient.connected) {
+        console.log('✅ STOMP Verbindung ist aktiv');
+        console.log('Aktive Subscriptions:');
 
-        // Test-Match-Subscription
-        const matchSub = window.stompClient.subscribe('/user/queue/game.match',
-            function(message) {
-                console.log('🎯 MATCH MESSAGE RECEIVED:', JSON.parse(message.body));
-                alert('MATCH GEFUNDEN! ' + JSON.stringify(JSON.parse(message.body), null, 2));
-            }
-        );
+        // Prüfe ob Subscriptions existieren
+        const subscriptions = stompClient.subscriptions || {};
+        Object.keys(subscriptions).forEach(key => {
+            console.log(`  - ${key}: ${subscriptions[key].id}`);
+        });
 
-        // Lobby-Subscription
-        const lobbySub = window.stompClient.subscribe('/topic/lobby/' + currentCategory,
-            function(message) {
-                console.log('🔄 LOBBY UPDATE:', JSON.parse(message.body));
-            }
-        );
+        // Manuelle Test-Subscription erstellen
+        if (!gameMatchSubscription) {
+            console.log('🛠️ Erstelle manuelle Match-Subscription...');
+            gameMatchSubscription = stompClient.subscribe('/user/queue/game.match', function(message) {
+                try {
+                    const match = JSON.parse(message.body);
+                    console.log('🎯 MANUELLES MATCH EMPFANGEN:', match);
+                    alert('🎯 MATCH GEFUNDEN!\nSpiel-ID: ' + match.gameId + '\nGegner: ' + match.opponent.username);
+                    handleGameMatch(match);
+                } catch (e) {
+                    console.error('❌ Fehler beim Parsen der Match-Nachricht:', e);
+                }
+            });
+            console.log('✅ Manuelle Subscription erstellt');
+        }
 
-        console.log('Debug subscriptions created');
-
-        // Sende Test-Request
-        fetch(`/api/debug/send-test/${currentPlayerId}`)
-            .then(r => r.text())
-            .then(console.log);
+        // Test: Sende direkt einen Join-Request
+        console.log('📤 Sende Test-Join Request...');
+        stompClient.send("/app/game.join", {}, JSON.stringify({
+            playerId: currentPlayer.id,
+            username: currentPlayer.username,
+            category: currentCategory || 'ALL'
+        }));
+    } else {
+        console.error('❌ STOMP Client nicht verbunden oder nicht vorhanden');
     }
+};
+
+    // Direkte Test-Funktion
+function testMatch() {
+    if (!stompClient || !stompClient.connected) {
+        console.error('❌ STOMP nicht verbunden');
+        return;
+
+        stompClient.subscribe('/topic/game/match/player/' + currentPlayer.id, function(msg) {
+    const match = JSON.parse(msg.body);
+    console.log('🎯 MATCH ÜBER PLAYER-SPECIFIC TOPIC EMPFANGEN:', match);
+
+    // UI umschalten
+    document.getElementById('matchInfo').classList.remove('d-none');
+    document.getElementById('queueInfo').classList.add('d-none');
+    document.getElementById('livePlayersContainer').classList.add('d-none');
+
+    // Gegner anzeigen
+    const opponentInfo = document.getElementById('opponentInfo');
+    opponentInfo.innerHTML = `
+        <div class="text-center">
+            <img src="${match.opponent.profileImageUrl || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(match.opponent.username) + '&background=random&color=fff&size=60'}"
+                 class="player-avatar mb-2">
+            <h5>${match.opponent.username}</h5>
+            <small class="text-muted">
+                Spiele: ${match.opponent.totalGames || 0},
+                Siege: ${match.opponent.gamesWon || 0}
+            </small>
+        </div>
+    `;
+
+    // Countdown starten
+    startGameCountdown(match.gameId);
+
+    // Alert
+    alert('🎯 MATCH GEFUNDEN über Player-Specific Topic!\nGegner: ' + match.opponent.username);
+});
+    }
+
+    console.log('🎯 TEST: Abonniere alle möglichen Channels');
+
+    // 1. User-spezifische Queue
+    stompClient.subscribe('/user/queue/game.match', function(msg) {
+        console.log('🔥 /user/queue/game.match:', JSON.parse(msg.body));
+        alert('MATCH VIA USER QUEUE');
+    });
+
+    // 2. Mit expliziter Player-ID
+    stompClient.subscribe('/user/' + currentPlayer.id + '/queue/game.match', function(msg) {
+        console.log('🔥 /user/{id}/queue/game.match:', JSON.parse(msg.body));
+        alert('MATCH VIA EXPLICIT ID');
+    });
+
+    // 3. Debug Topic
+    stompClient.subscribe('/topic/debug/match', function(msg) {
+        console.log('🔍 /topic/debug/match:', JSON.parse(msg.body));
+    });
+
+    // 4. Lobby Update
+    stompClient.subscribe('/topic/lobby/SPORTS', function(msg) {
+        console.log('🎪 Lobby Update SPORTS:', JSON.parse(msg.body));
+    });
+
+    // 5. Alle Queues mit Wildcard
+    stompClient.subscribe('/user/queue/*', function(msg) {
+        console.log('📫 ANY QUEUE:', msg.headers.destination, msg.body);
+    });
+
+    console.log('✅ Alle Test-Subscriptions aktiv');
+}
+
+// Und dann diese Zeile hinzufügen, um die Test-Funktion automatisch aufzurufen:
+setTimeout(() => {
+    console.log('🔄 Starte automatischen Test...');
+    testMatch();
+}, 2000);
+
+    function debugSendMatch() {
+    if (!stompClient || !stompClient.connected) {
+        alert('❌ Nicht verbunden');
+        return;
+    }
+
+    stompClient.send("/app/game.debug.sendMatch", {}, JSON.stringify({
+        playerId: currentPlayer.id,
+        category: currentCategory || 'ALL'
+    }));
+
+    console.log('🔧 Debug-Match Request gesendet');
+    showNotification('🔧 Debug-Match angefordert');
 }
 </script>
 </body>

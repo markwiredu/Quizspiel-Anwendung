@@ -34,10 +34,10 @@ public class GameWebSocketController {
     @MessageMapping("/game.join")
     public void handleJoinLobby(@Payload JoinLobbyRequest request) {
         try {
-            log.info("🎮 SPIELER {} MÖCHTE LOBBY '{}' BEITRETEN (Session aktualisieren)",
+            log.info("🎮 SPIELER {} MÖCHTE LOBBY '{}' BEITRETEN",
                     request.getPlayerId(), request.getCategory());
 
-            // 1. Lobby-Update an alle senden (vor dem Beitritt, falls nötig)
+            // 1. Lobby-Update an alle senden
             broadcastLobbyUpdate(request.getCategory());
 
             // 2. Spieler der Lobby hinzufügen
@@ -59,7 +59,7 @@ public class GameWebSocketController {
             // 4. Lobby-Update an alle senden
             broadcastLobbyUpdate(request.getCategory());
 
-            // 5. Matchmaking prüfen (nur wenn genug Spieler)
+            // 5. Matchmaking prüfen
             checkForMatch(request.getCategory());
 
         } catch (Exception e) {
@@ -91,7 +91,6 @@ public class GameWebSocketController {
                     request.getPlayerId(), request.getGameId(), request.getAnswer());
 
             // 1. Antwort speichern
-            String answerKey = request.getGameId() + "_" + request.getPlayerId() + "_" + request.getRoundNumber();
             playerAnswers.put(request.getGameId() + request.getPlayerId(), request.getAnswer());
 
             // 2. Spieler benachrichtigen
@@ -164,6 +163,54 @@ public class GameWebSocketController {
         }
     }
 
+    // Füge diese Methode zur GameWebSocketController.java hinzu:
+    @MessageMapping("/game.debug.sendMatch")
+    public void debugSendMatch(@Payload Map<String, Object> request) {
+        Long playerId = Long.valueOf(request.get("playerId").toString());
+        String category = request.get("category").toString();
+
+        log.info("🎯 DEBUG: Manuelles Match an Spieler {} senden", playerId);
+
+        Player opponent = playerRepository.findById(999L).orElseGet(() -> {
+            Player debugPlayer = new Player();
+            debugPlayer.setId(999L);
+            debugPlayer.setUsername("DEBUG_GEGNER");
+            return debugPlayer;
+        });
+
+        GameMatchMessage testMsg = new GameMatchMessage(
+                9999L,
+                convertToPlayerDTO(opponent),
+                category
+        );
+
+        // 1. Versuche user-queue
+        messagingTemplate.convertAndSendToUser(
+                playerId.toString(),
+                "/queue/game.match",
+                testMsg
+        );
+
+        // 2. Sende an player-specific topic
+        messagingTemplate.convertAndSend(
+                "/topic/game/match/player/" + playerId,
+                testMsg
+        );
+
+        // 3. Sende an debug topic
+        messagingTemplate.convertAndSend(
+                "/topic/debug/match",
+                Map.of(
+                        "type", "DEBUG_MATCH_SENT",
+                        "playerId", playerId,
+                        "message", "Test-Match gesendet",
+                        "timestamp", System.currentTimeMillis()
+                )
+        );
+
+        log.info("✅ Debug-Match an Spieler {} gesendet", playerId);
+    }
+
     // ========== PRIVATE HELPER METHODS ==========
 
     private void checkForMatch(String category) {
@@ -186,7 +233,7 @@ public class GameWebSocketController {
 
                 log.info("🎮 SPIEL ERSTELLT: ID {}", game.getId());
 
-                // Spieler aus Lobby entfernen (nach erfolgreichem Spiel-Erstellen)
+                // Spieler aus Lobby entfernen
                 lobbyService.removePlayersAfterMatch(
                         match.player1Id,
                         match.player2Id,
@@ -224,6 +271,7 @@ public class GameWebSocketController {
         }
     }
 
+
     private void notifyMatchFound(Game game, Long player1Id, Long player2Id) {
         log.info("🎯 SENDE MATCH-NOTIFICATION: Spiel {} für Spieler {} und {}",
                 game.getId(), player1Id, player2Id);
@@ -247,26 +295,24 @@ public class GameWebSocketController {
                 game.getCategory()
         );
 
-        log.info("📨 Nachricht an Spieler {}: {}", player1Id, matchMsg1);
-        log.info("📨 Nachricht an Spieler {}: {}", player2Id, matchMsg2);
+        log.info("📨 Sende an Spieler {}: {}", player1Id, matchMsg1);
+        log.info("📨 Sende an Spieler {}: {}", player2Id, matchMsg2);
 
-        // An Spieler 1 senden
-        messagingTemplate.convertAndSendToUser(
-                player1Id.toString(),
-                "/queue/game.match",
+        // WICHTIG: Verwende öffentliche Topics statt user-queue
+        // 1. Spieler-spezifisches Topic (funktioniert immer)
+        messagingTemplate.convertAndSend(
+                "/topic/game/match/player/" + player1Id,
                 matchMsg1
         );
 
-        // An Spieler 2 senden
-        messagingTemplate.convertAndSendToUser(
-                player2Id.toString(),
-                "/queue/game.match",
+        messagingTemplate.convertAndSend(
+                "/topic/game/match/player/" + player2Id,
                 matchMsg2
         );
 
-        log.info("✅ Match notifications an /queue/game.match gesendet");
+        log.info("✅ Match notifications gesendet");
 
-        // DEBUG: Sende auch an Topic für Debug-Zwecke
+        // DEBUG: Sende zusätzlich an ein Topic für Debugging
         messagingTemplate.convertAndSend(
                 "/topic/debug/match",
                 Map.of(
@@ -278,6 +324,7 @@ public class GameWebSocketController {
                 )
         );
     }
+
 
     @Async
     public void startGameCountdownAsync(Game game) {
