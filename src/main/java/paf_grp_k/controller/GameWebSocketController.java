@@ -144,7 +144,7 @@ public class GameWebSocketController {
                     "type", "ROUND_START",
                     "gameId", request.getGameId(),
                     "roundNumber", request.getRoundNumber(),
-                    "question", round.getQuestion(),
+                    "question", toPublicDto(round.getQuestion()),
                     "timeLimit", 30000,
                     "totalRounds", 5
             );
@@ -364,7 +364,7 @@ public class GameWebSocketController {
                     "category", game.getCategory(),
                     "round", Map.of(
                             "number", 1,
-                            "question", firstRound.getQuestion(),
+                            "question", toPublicDto(firstRound.getQuestion()),
                             "timeLimit", 30000
                     ),
                     "totalRounds", 5
@@ -579,4 +579,17 @@ public class GameWebSocketController {
         dto.setHighscore(player.getHighscore());
         return dto;
     }
+
+    private QuestionPublicDTO toPublicDto(paf_grp_k.model.Question q) {
+        return new QuestionPublicDTO(
+                q.getId(),
+                q.getCategory(),
+                q.getQuestionText(),
+                q.getOptionA(),
+                q.getOptionB(),
+                q.getOptionC(),
+                q.getOptionD()
+        );
+    }
+
 }

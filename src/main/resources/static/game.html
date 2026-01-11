@@ -553,12 +553,12 @@
 
       // Frage anzeigen
     // Frage anzeigen (DB-Flow)
-    if (questions && questions.length > 0) {
-      displayQuestionFromDb(questions[currentQuestionIndex]);
-      currentQuestionIndex = (currentQuestionIndex + 1) % questions.length; // nächste Frage vorbereiten
+    if (roundData.question) {
+      displayQuestionFromDb(roundData.question);
     } else {
-      elements.questionText.textContent = "Fragen werden geladen...";
+      elements.questionText.textContent = "Frage fehlt (Serverprobleme)";
     }
+
 
 
 
