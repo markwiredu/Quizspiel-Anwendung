@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuizDuell - Meine Statistiken</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+        background-color: #f8f9fa;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .stats-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .header-card {
+        background: linear-gradient(135deg, #4e73df 0%, #2e59d9 100%);
+        color: white;
+        border-radius: 15px;
+        padding: 30px;
+        text-align: center;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+    }
+
+    .player-avatar {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        border: 5px solid white;
+        object-fit: cover;
+        margin-bottom: 20px;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .stat-card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        text-align: center;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+        border-top: 5px solid;
+        transition: transform 0.3s ease;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .stat-card.total {
+        border-color: #4e73df;
+    }
+
+    .stat-card.won {
+        border-color: #1cc88a;
+    }
+
+    .stat-card.lost {
+        border-color: #e74a3b;
+    }
+
+    .stat-card.rate {
+        border-color: #f6c23e;
+    }
+
+    .stat-number {
+        font-size: 3rem;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+
+    .stat-label {
+        color: #6c757d;
+        font-size: 1.1rem;
+    }
+
+    .winrate-circle {
+        width: 150px;
+        height: 150px;
+        margin: 0 auto 20px;
+        position: relative;
+    }
+
+    .circle-bg {
+        fill: none;
+        stroke: #eee;
+        stroke-width: 10;
+    }
+
+    .circle-progress {
+        fill: none;
+        stroke: #1cc88a;
+        stroke-width: 10;
+        stroke-linecap: round;
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+        transition: stroke-dasharray 1s ease;
+    }
+
+    .circle-text {
+        font-size: 2rem;
+        font-weight: bold;
+        fill: #333;
+    }
+
+    .circle-label {
+        font-size: 1rem;
+        fill: #6c757d;
+    }
+
+    .progress-section {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        margin-bottom: 30px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+    }
+
+    .progress-bar {
+        height: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+
+    .btn-back {
+        width: 100%;
+        padding: 12px;
+        font-size: 1.1rem;
+    }
+
+    @media (max-width: 768px) {
+        .stats-container {
+            padding: 10px;
+        }
+
+        .header-card {
+            padding: 20px;
+        }
+
+        .player-avatar {
+            width: 80px;
+            height: 80px;
+        }
+    }
+  </style>
+</head>
+<body>
+<div class="stats-container">
+  <!-- Header mit Spielerinfo -->
+  <div class="header-card">
+    <img id="playerAvatar" src="/images/default-avatar.jpg" class="player-avatar">
+    <h1 id="playerName">Spielername</h1>
+    <p class="lead">Meine QuizDuell Statistiken</p>
+  </div>
+
+  <!-- Statistik-Karten -->
+  <div class="stats-grid">
+    <div class="stat-card total">
+      <div class="stat-number" id="totalGames">0</div>
+      <div class="stat-label">Gesamte Spiele</div>
+    </div>
+
+    <div class="stat-card won">
+      <div class="stat-number" id="gamesWon">0</div>
+      <div class="stat-label">Gewonnene Spiele</div>
+    </div>
+
+    <div class="stat-card lost">
+      <div class="stat-number" id="gamesLost">0</div>
+      <div class="stat-label">Verlorene Spiele</div>
+    </div>
+
+    <div class="stat-card rate">
+      <div class="stat-number" id="winRate">0%</div>
+      <div class="stat-label">Gewinnrate</div>
+    </div>
+  </div>
+
+  <!-- Visuelle Darstellung -->
+  <div class="progress-section">
+    <h4 class="mb-4">📊 Spieleverteilung</h4>
+
+    <!-- Gewonnen -->
+    <div class="mb-3">
+      <div class="d-flex justify-content-between mb-2">
+        <span>🏆 Gewonnen</span>
+        <span id="wonPercentage">0%</span>
+      </div>
+      <div class="progress">
+        <div id="wonProgress" class="progress-bar bg-success"
+             role="progressbar" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Verloren -->
+    <div class="mb-3">
+      <div class="d-flex justify-content-between mb-2">
+        <span>💔 Verloren</span>
+        <span id="lostPercentage">0%</span>
+      </div>
+      <div class="progress">
+        <div id="lostProgress" class="progress-bar bg-danger"
+             role="progressbar" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Kreisförmige Gewinnrate -->
+    <div class="text-center mt-5">
+      <h5 class="mb-4">🎯 Gewinnrate</h5>
+      <div class="winrate-circle">
+        <svg viewBox="0 0 200 200">
+          <circle class="circle-bg" cx="100" cy="100" r="90"></circle>
+          <circle id="winrateCircle" class="circle-progress"
+                  cx="100" cy="100" r="90"
+                  stroke-dasharray="0 565"></circle>
+          <text class="circle-text" x="100" y="100" text-anchor="middle" dy="0.3em">
+            <tspan id="winrateText">0%</tspan>
+          </text>
+          <text class="circle-label" x="100" y="120" text-anchor="middle">
+            Erfolgsquote
+          </text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rangliste-Button -->
+  <div class="text-center mb-4">
+    <a href="leaderboard.html" class="btn btn-primary btn-lg btn-back">
+      🏆 Zur Rangliste
+    </a>
+  </div>
+
+  <!-- Zurück-Button -->
+  <div class="text-center">
+    <a href="lobby.html" class="btn btn-secondary btn-lg btn-back">
+      ← Zurück zur Lobby
+    </a>
+  </div>
+</div>
+
+<script>
+  let currentPlayer = null;
+
+  document.addEventListener('DOMContentLoaded', function() {
+      loadPlayerData();
+      loadStats();
+  });
+
+  function loadPlayerData() {
+      const savedPlayer = localStorage.getItem('currentPlayer');
+      if (savedPlayer) {
+          try {
+              currentPlayer = JSON.parse(savedPlayer);
+              document.getElementById('playerName').textContent = currentPlayer.username;
+              if (currentPlayer.profileImageUrl) {
+                  document.getElementById('playerAvatar').src = currentPlayer.profileImageUrl;
+              }
+          } catch (e) {
+              console.error('Fehler beim Laden des Spielers:', e);
+          }
+      }
+  }
+
+  function loadStats() {
+      if (!currentPlayer) {
+          console.error('Kein Spieler eingeloggt');
+          return;
+      }
+
+      fetch(`/api/stats/player/${currentPlayer.id}`)
+          .then(response => {
+              if (!response.ok) {
+                  throw new Error('Statistik nicht gefunden');
+              }
+              return response.json();
+          })
+          .then(stats => {
+              updateStatsDisplay(stats);
+          })
+          .catch(error => {
+              console.error('Fehler beim Laden der Statistiken:', error);
+              // Fallback: Standardwerte anzeigen
+              updateStatsDisplay({
+                  totalGames: 0,
+                  gamesWon: 0,
+                  gamesLost: 0,
+                  winRate: 0
+              });
+          });
+  }
+
+  function updateStatsDisplay(stats) {
+      // Zahlenwerte anzeigen
+      document.getElementById('totalGames').textContent = stats.totalGames || 0;
+      document.getElementById('gamesWon').textContent = stats.gamesWon || 0;
+      document.getElementById('gamesLost').textContent = stats.gamesLost || 0;
+      document.getElementById('winRate').textContent = (stats.winRate || 0) + '%';
+
+      // Fortschrittsbalken berechnen
+      const totalGames = stats.totalGames || 1; // Vermeide Division durch 0
+      const wonPercentage = ((stats.gamesWon || 0) / totalGames) * 100;
+      const lostPercentage = ((stats.gamesLost || 0) / totalGames) * 100;
+
+      // Fortschrittsbalken aktualisieren
+      const wonProgress = document.getElementById('wonProgress');
+      const lostProgress = document.getElementById('lostProgress');
+
+      wonProgress.style.width = wonPercentage + '%';
+      lostProgress.style.width = lostPercentage + '%';
+
+      document.getElementById('wonPercentage').textContent = Math.round(wonPercentage) + '%';
+      document.getElementById('lostPercentage').textContent = Math.round(lostPercentage) + '%';
+
+      // Kreisförmige Gewinnrate aktualisieren
+      const winrate = stats.winRate || 0;
+      const circle = document.getElementById('winrateCircle');
+      const circumference = 2 * Math.PI * 90; // 2πr
+      const progress = (winrate / 100) * circumference;
+
+      circle.style.strokeDasharray = `${progress} ${circumference}`;
+      document.getElementById('winrateText').textContent = winrate + '%';
+
+      // Kreis animieren
+      circle.style.strokeDasharray = '0 ' + circumference;
+      setTimeout(() => {
+          circle.style.transition = 'stroke-dasharray 1.5s ease-in-out';
+          circle.style.strokeDasharray = progress + ' ' + circumference;
+      }, 100);
+  }
+</script>
+</body>
+</html>
