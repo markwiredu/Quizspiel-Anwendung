@@ -1,6 +1,7 @@
 package paf_grp_k.model;
 
 import jakarta.persistence.*;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -60,4 +61,8 @@ public class Player {
      * Bester erzielter Highscore des Spielers.
      */
     private int highscore = 0;
+
+
+
+
 }

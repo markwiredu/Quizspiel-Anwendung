@@ -6,12 +6,14 @@ import paf_grp_k.repository.PlayerRepository;
 import paf_grp_k.repository.QuestionRepository;
 import paf_grp_k.repository.RoundRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -63,8 +65,6 @@ public class GameService {
         if (questions.isEmpty()) {
             throw new RuntimeException("No questions available");
         }
-
-
 
         Question question = questions.get(0);
 
@@ -152,7 +152,7 @@ public class GameService {
     }
 
     /**
-     * Spiel beenden
+     * Spiel beenden und Statistiken aktualisieren
      */
     public Game finishGame(Long gameId) {
         Game game = gameRepository.findById(gameId)
@@ -169,7 +169,46 @@ public class GameService {
         }
         // Bei Gleichstand bleibt winner null
 
+        // Statistiken aktualisieren
+        updatePlayerStats(game);
+
         return gameRepository.save(game);
+    }
+
+    /**
+     * Spieler-Statistiken aktualisieren
+     */
+    private void updatePlayerStats(Game game) {
+        Player player1 = game.getPlayer1();
+        Player player2 = game.getPlayer2();
+
+        // Gesamtspiele erhöhen
+        player1.setTotalGames(player1.getTotalGames() + 1);
+        player2.setTotalGames(player2.getTotalGames() + 1);
+
+        // Gewinner/Verlierer aktualisieren
+        if (game.getWinner() != null) {
+            if (game.getWinner().getId().equals(player1.getId())) {
+                player1.setGamesWon(player1.getGamesWon() + 1);
+                player2.setGamesLost(player2.getGamesLost() + 1);
+                log.info("📊 Spieler {} gewinnt gegen {}", player1.getUsername(), player2.getUsername());
+            } else {
+                player2.setGamesWon(player2.getGamesWon() + 1);
+                player1.setGamesLost(player1.getGamesLost() + 1);
+                log.info("📊 Spieler {} gewinnt gegen {}", player2.getUsername(), player1.getUsername());
+            }
+        } else {
+            log.info("📊 Unentschieden zwischen {} und {}", player1.getUsername(), player2.getUsername());
+        }
+
+        // Spieler speichern
+        playerRepository.save(player1);
+        playerRepository.save(player2);
+
+        log.info("✅ Statistiken aktualisiert für Spiel {}: {} (S:{} V:{}) vs {} (S:{} V:{})",
+                game.getId(),
+                player1.getUsername(), player1.getGamesWon(), player1.getGamesLost(),
+                player2.getUsername(), player2.getGamesWon(), player2.getGamesLost());
     }
 
     public List<Game> getPlayerGames(Long playerId) {

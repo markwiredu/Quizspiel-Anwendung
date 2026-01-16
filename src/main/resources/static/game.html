@@ -194,6 +194,48 @@
         from { transform: translateY(50px); opacity: 0; }
         to { transform: translateY(0); opacity: 1; }
     }
+    .answer-btn.correct {
+    background: linear-gradient(135deg, #1cc88a 0%, #17a673 100%) !important;
+    color: white !important;
+    border-color: #1cc88a !important;
+    animation: pulseCorrect 0.5s ease-in-out;
+}
+
+.answer-btn.incorrect {
+    background: linear-gradient(135deg, #e74a3b 0%, #c0352b 100%) !important;
+    color: white !important;
+    border-color: #e74a3b !important;
+    animation: shake 0.5s ease-in-out;
+}
+
+.answer-btn.selected {
+    border-color: #4e73df !important;
+    border-width: 3px !important;
+    box-shadow: 0 0 0 3px rgba(78, 115, 223, 0.3) !important;
+}
+
+@keyframes pulseCorrect {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+/* Punkte-Animation */
+@keyframes scorePop {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.score-update {
+    animation: scorePop 0.5s ease-out;
+}
   </style>
 </head>
 <body>
@@ -320,513 +362,519 @@
     </div>
   </div>
 </div>
-
 <script>
+  /* =========================
+     GLOBAL STATE
+  ========================= */
   let stompClient = null;
   let currentGame = null;
   let currentPlayer = null;
   let currentRound = 1;
   const TOTAL_ROUNDS = 5;
+
   let selectedAnswer = null;
   let timerInterval = null;
   let timeLeft = 30;
 
-  // DOM Elemente
+  /* =========================
+     DOM HELPERS
+  ========================= */
+  const $ = id => document.getElementById(id);
+  const $$ = sel => document.querySelectorAll(sel);
+  const show = id => $(id)?.classList.remove('d-none');
+  const hide = id => $(id)?.classList.add('d-none');
+  const setText = (id, text) => { if ($(id)) $(id).textContent = text; };
+
+  /* =========================
+     DOM ELEMENTS
+  ========================= */
   const elements = {
-      questionText: document.getElementById('questionText'),
-      answerOptions: document.getElementById('answerOptions'),
-      submitAnswerBtn: document.getElementById('submitAnswerBtn'),
-      nextRoundBtn: document.getElementById('nextRoundBtn'),
-      timerProgress: document.getElementById('timerProgress'),
-      timeLeft: document.getElementById('timeLeft'),
-      player1Score: document.getElementById('player1Score'),
-      player2Score: document.getElementById('player2Score'),
-      player1Name: document.getElementById('player1Name'),
-      player2Name: document.getElementById('player2Name'),
-      player1Avatar: document.getElementById('player1Avatar'),
-      player2Avatar: document.getElementById('player2Avatar'),
-      gameCategory: document.getElementById('gameCategory'),
-      questionCategory: document.getElementById('questionCategory'),
-      roundNumber: document.getElementById('roundNumber'),
-      totalRounds: document.getElementById('totalRounds'),
-      currentRound: document.getElementById('currentRound'),
-      opponentAnswerStatus: document.getElementById('opponentAnswerStatus'),
-      gameLog: document.getElementById('gameLog'),
-      countdownOverlay: document.getElementById('countdownOverlay'),
-      countdownDisplay: document.getElementById('countdownDisplay'),
-      gameResultModal: document.getElementById('gameResultModal'),
-      resultTitle: document.getElementById('resultTitle'),
-      resultMessage: document.getElementById('resultMessage'),
-      resultIcon: document.getElementById('resultIcon'),
-      finalScorePlayer1: document.getElementById('finalScorePlayer1'),
-      finalScorePlayer2: document.getElementById('finalScorePlayer2')
+    questionText: $('questionText'),
+    submitAnswerBtn: $('submitAnswerBtn'),
+    nextRoundBtn: $('nextRoundBtn'),
+    timerProgress: $('timerProgress'),
+    timeLeft: $('timeLeft'),
+
+    player1Score: $('player1Score'),
+    player2Score: $('player2Score'),
+    player1Name: $('player1Name'),
+    player2Name: $('player2Name'),
+    player1Avatar: $('player1Avatar'),
+    player2Avatar: $('player2Avatar'),
+
+    gameCategory: $('gameCategory'),
+    questionCategory: $('questionCategory'),
+    currentRound: $('currentRound'),
+
+    opponentAnswerStatus: $('opponentAnswerStatus'),
+    gameLog: $('gameLog'),
+
+    countdownOverlay: $('countdownOverlay'),
+    countdownDisplay: $('countdownDisplay'),
+
+    gameResultModal: $('gameResultModal'),
+    resultTitle: $('resultTitle'),
+    resultMessage: $('resultMessage'),
+    resultIcon: $('resultIcon'),
+    finalScorePlayer1: $('finalScorePlayer1'),
+    finalScorePlayer2: $('finalScorePlayer2')
   };
 
-  // Spiel initialisieren
-  window.onload = function() {
-      loadGameData();
+  /* =========================
+     INIT
+  ========================= */
+  window.onload = () => loadGameData();
+
+  async function loadGameData() {
+    currentPlayer = JSON.parse(localStorage.getItem('currentPlayer'));
+    if (!currentPlayer) return redirectLobby();
+
+    setText('player1Name', currentPlayer.username);
+    if (currentPlayer.profileImageUrl) {
+      elements.player1Avatar.src = currentPlayer.profileImageUrl;
+    }
+
+    const gameId = new URLSearchParams(location.search).get('gameId');
+    if (gameId) {
+      await fetchGameData(gameId);
+    } else {
+      loadGameFromStorage();
+    }
+
+    if (currentGame?.id) {
       connectWebSocket();
       setupEventListeners();
-
-    // HIER: Fragen laden, sobald Spiel/Kategorie bekannt ist
-    // Wenn currentGame noch nicht da ist, ist es trotzdem okay: wir laden erstmal alle.
-    loadQuestionsFromApi(currentGame?.category);
-  };
-
-  function loadGameData() {
-      // Spielerdaten laden
-      const savedPlayer = localStorage.getItem('currentPlayer');
-      if (savedPlayer) {
-          currentPlayer = JSON.parse(savedPlayer);
-          elements.player1Name.textContent = currentPlayer.username;
-          if (currentPlayer.profileImageUrl) {
-              elements.player1Avatar.src = currentPlayer.profileImageUrl;
-          }
-      }
-
-      // Spieldaten laden
-      const savedGame = localStorage.getItem('currentGame');
-      if (savedGame) {
-          currentGame = JSON.parse(savedGame);
-          updateGameDisplay();
-      } else {
-          // Fallback: aus URL laden
-          const urlParams = new URLSearchParams(window.location.search);
-          const gameId = urlParams.get('gameId');
-          if (gameId) {
-              fetchGameData(gameId);
-          }
-      }
-  }
-
-  function fetchGameData(gameId) {
-      fetch(`/api/games/${gameId}`)
-          .then(response => response.json())
-          .then(game => {
-              currentGame = game;
-              updateGameDisplay();
-          })
-          .catch(error => {
-              console.error('Fehler beim Laden des Spiels:', error);
-              addGameLog('❌ Spiel konnte nicht geladen werden');
-          });
-  }
-
-  // ================================
-  // FRAGEN LADEN (REST) + RENDER
-  // ================================
-
-  // Hier speichern wir Fragen lokal
-  let questions = [];
-  let currentQuestionIndex = 0;
-
-  // Lädt Fragen aus deinem Backend (MySQL via JPA)
-  async function loadQuestionsFromApi(category) {
-    try {
-      // Optional: Wenn du später nach Kategorie filtern willst:
-      // const url = category ? `/api/questions?category=${encodeURIComponent(category)}` : `/api/questions`;
-
-      const url = `/api/questions`;
-      const res = await fetch(url);
-
-      if (!res.ok) throw new Error(`HTTP ${res.status} bei ${url}`);
-
-      questions = await res.json();
-      console.log("✅ Fragen geladen:", questions);
-
-      if (!questions || questions.length === 0) {
-        elements.questionText.textContent = "Keine Fragen gefunden.";
-        return;
-      }
-
-      currentQuestionIndex = 0;
-      displayQuestionFromDb(questions[currentQuestionIndex]);
-
-    } catch (err) {
-      console.error("❌ Fragen laden fehlgeschlagen:", err);
-      elements.questionText.textContent = "Fehler beim Laden der Frage.";
     }
   }
 
-  // Rendert eine DB-Frage in DEIN UI (passt zu QuestionPublicDTO)
-  function displayQuestionFromDb(q) {
-    // Text + Kategorie
-    elements.questionText.textContent = q.questionText ?? "Fragetext fehlt";
-    elements.questionCategory.textContent = q.category ?? (currentGame?.category ?? "");
+  function redirectLobby() {
+    setTimeout(() => location.href = '/lobby.html', 2000);
+  }
 
-    // Buttons füllen
-    document.getElementById("answerA").textContent = `A: ${q.optionA ?? "-"}`;
-    document.getElementById("answerB").textContent = `B: ${q.optionB ?? "-"}`;
-    document.getElementById("answerC").textContent = `C: ${q.optionC ?? "-"}`;
-    document.getElementById("answerD").textContent = `D: ${q.optionD ?? "-"}`;
+  function loadGameFromStorage() {
+    const saved = localStorage.getItem('currentGame');
+    if (!saved) return redirectLobby();
+    currentGame = JSON.parse(saved);
+    updateGameDisplay();
+  }
 
-    // Wichtig: deine bestehende Grid-AnswerOptions (mit wrongAnswers etc.) deaktivieren/leer lassen
-    elements.answerOptions.innerHTML = "";
+  /* =========================
+     GAME FETCH
+  ========================= */
+  async function fetchGameData(gameId) {
+    try {
+      const res = await fetch(`/api/games/${gameId}`);
+      currentGame = await res.json();
+      localStorage.setItem('currentGame', JSON.stringify(currentGame));
+      updateGameDisplay();
+    } catch {
+      redirectLobby();
+    }
+  }
 
-    // Runde resetten (damit Button states stimmen)
-    selectedAnswer = null;
+  /* =========================
+     WEBSOCKET
+  ========================= */
+  function connectWebSocket() {
+    const socket = new SockJS('/quiz-websocket');
+    stompClient = Stomp.over(socket);
+    stompClient.debug = msg => console.log('STOMP:', msg);
+
+    stompClient.connect({}, () => {
+      addGameLog('✅ Verbunden');
+      subscribeAll();
+    }, () => setTimeout(connectWebSocket, 5000));
+  }
+
+  const subscribe = (topic, handler) =>
+    stompClient.subscribe(topic, msg => handler(JSON.parse(msg.body)));
+
+  function subscribeAll() {
+    const id = currentGame.id;
+
+    subscribe(`/topic/game/${id}`, handleGameMessage);
+    subscribe(`/topic/game/${id}/timer`, handleTimerMessage);
+    subscribe(`/topic/game/${id}/countdown`, d => d.type === 'COUNTDOWN' && showCountdown(d.seconds));
+    subscribe(`/topic/game/${id}/result`, d => {
+      showRoundResult(d.result);
+      updateScores(d.scores);
+    });
+
+    if (currentPlayer?.id) {
+      subscribe(`/user/queue/game.answer.feedback`, handleAnswerFeedback);
+    }
+  }
+
+  /* =========================
+     TIMER
+  ========================= */
+  function startTimer(seconds = 30) {
+    stopTimer();
+    timeLeft = seconds;
+    updateTimer();
+
+    timerInterval = setInterval(() => {
+      if (--timeLeft <= 0) return timeOut();
+      updateTimer();
+    }, 1000);
+  }
+
+  function updateTimer() {
+    setText('timeLeft', timeLeft);
+    elements.timerProgress.style.width = `${(timeLeft / 30) * 100}%`;
+  }
+
+  function stopTimer() {
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = null;
+  }
+
+  function timeOut() {
+    stopTimer();
+    if (!selectedAnswer) sendAnswerToServer('TIMEOUT');
+  }
+
+  function handleTimerMessage(data) {
+    if (data.type === 'TIMER_START') startTimer(data.timeLimit);
+    if (data.type === 'TIMER_UPDATE') {
+      timeLeft = data.remainingSeconds;
+      updateTimer();
+    }
+  }
+
+  /* =========================
+     GAME FLOW
+  ========================= */
+  function handleGameMessage(data) {
+    const handlers = {
+      GAME_START: () => showGameStart(data),
+      ROUND_START: () => startNewRound(data),
+      OPPONENT_ANSWERED: opponentAnswered,
+      GAME_END: () => endGame(data)
+    };
+    handlers[data.type]?.();
+  }
+
+  function startNewRound(data) {
+    resetRound();
+    currentRound = data.roundNumber || currentRound;
+    setText('currentRound', `Runde ${currentRound}/${TOTAL_ROUNDS}`);
+    displayQuestion(data.question);
+  }
+
+  function displayQuestion(q) {
+    setText('questionText', q.questionText);
+    setText('questionCategory', q.category);
+
+    ['A','B','C','D'].forEach(l =>
+      setText(`answer${l}`, `${l}: ${q['option'+l]}`)
+    );
+
     elements.submitAnswerBtn.disabled = true;
   }
 
-  function connectWebSocket() {
-      const socket = new SockJS('/quiz-websocket');
-      stompClient = Stomp.over(socket);
+  function selectAnswer(letter) {
+    selectedAnswer = letter;
+    elements.submitAnswerBtn.disabled = false;
 
-      stompClient.connect({}, function(frame) {
-          console.log('✅ WebSocket für Spiel verbunden');
-
-          // Game-Channel subscriben
-          if (currentGame?.id) {
-              subscribeToGame();
-          }
-
-          // User-specific channels
-          if (currentPlayer?.id) {
-              subscribeToUser();
-          }
-
-      }, function(error) {
-          console.error('❌ WebSocket Fehler:', error);
-          addGameLog('Verbindungsfehler. Bitte Seite neu laden.');
-      });
+    $$('.answer-btn').forEach(btn => {
+      btn.classList.toggle('selected', btn.dataset.answer === letter);
+    });
   }
 
-  function subscribeToGame() {
-      stompClient.subscribe(`/topic/game/${currentGame.id}`, function(message) {
-          const data = JSON.parse(message.body);
-          handleGameMessage(data);
-      });
+  function sendAnswerToServer(answer) {
+    stompClient.send('/app/game.answer', {}, JSON.stringify({
+      gameId: currentGame.id,
+      playerId: currentPlayer.id,
+      roundNumber: currentRound,
+      answer
+    }));
 
-      stompClient.subscribe(`/topic/game/${currentGame.id}/countdown`, function(message) {
-          const data = JSON.parse(message.body);
-          if (data.type === 'COUNTDOWN') {
-              showCountdown(data.seconds);
-          }
-      });
+    elements.submitAnswerBtn.disabled = true;
+    $$('.answer-btn').forEach(b => b.disabled = true);
   }
 
-  function subscribeToUser() {
-      stompClient.subscribe(`/user/queue/game.updates`, function(message) {
-          const data = JSON.parse(message.body);
-          handleGameUpdate(data);
-      });
-  }
+  /* =========================
+     RESULTS
+  ========================= */
+  function showRoundResult(result) {
+    if (!result) return;
 
-  function handleGameMessage(data) {
-      console.log('🎮 Spiel-Nachricht:', data);
+    console.log('📊 Zeige Ergebnis:', result);
 
-      switch(data.type) {
-          case 'ROUND_START':
-              startNewRound(data);
-              break;
+    // Backend sendet korrekte Antwort als Buchstabe ("A", "B", "C", "D")
+    const correctLetter = result.correctAnswer; // z.B. "B"
 
-          case 'ROUND_RESULT':
-              showRoundResult(data);
-              break;
+    // Markiere richtige und falsche Antworten
+    $$('.answer-btn').forEach(btn => {
+        const a = btn.dataset.answer; // "A", "B", "C", "D"
 
-          case 'GAME_START':
-              showGameStart(data);
-              break;
+        if (a === correctLetter) {
+            btn.classList.add('correct');
+            btn.classList.remove('incorrect');
+        } else if (a === selectedAnswer && a !== correctLetter) {
+            btn.classList.add('incorrect');
+            btn.classList.remove('correct');
+        } else {
+            btn.classList.remove('correct', 'incorrect');
+        }
+        btn.disabled = true;
+    });
 
-          case 'GAME_END':
-              endGame(data);
-              break;
-
-          case 'OPPONENT_ANSWERED':
-              opponentAnswered();
-              break;
-
-          case 'SCORE_UPDATE':
-              updateScores(data);
-              break;
-      }
-  }
-
-  function startNewRound(roundData) {
-      resetRound();
-      currentRound = roundData.roundNumber || currentRound;
-
-      // UI aktualisieren
-      elements.roundNumber.textContent = currentRound;
-      elements.totalRounds.textContent = TOTAL_ROUNDS;
-      elements.currentRound.textContent = `Runde ${currentRound}/${TOTAL_ROUNDS}`;
-
-      // Frage anzeigen
-    // Frage anzeigen (DB-Flow)
-    if (roundData.question) {
-      displayQuestionFromDb(roundData.question);
-    } else {
-      elements.questionText.textContent = "Frage fehlt (Serverprobleme)";
+    // Animation für Punkte-Update
+    if (result.player1Points > 0) {
+        animatePoints(result.player1Points);
     }
 
+    stopTimer();
+    if (currentRound < TOTAL_ROUNDS) {
+        show('nextRoundBtn');
+    }
 
-
-
-
-    // Timer starten
-      startTimer(roundData.timeLimit || 30000);
-
-      addGameLog(`📊 Runde ${currentRound} gestartet!`);
-  }
-
-  function displayQuestion(question) {
-      elements.questionText.textContent = question.text;
-      elements.questionCategory.textContent = question.category || currentGame.category;
-
-      // Antwortoptionen anzeigen
-      let html = '';
-      const answers = [question.correctAnswer, ...question.wrongAnswers];
-      shuffleArray(answers);
-
-      answers.forEach((answer, index) => {
-          html += `
-              <div class="col-md-6 mb-3">
-                  <div class="answer-option"
-                       data-answer="${answer}"
-                       onclick="selectAnswer(this, '${answer.replace(/'/g, "\\'")}')">
-                      <div class="d-flex align-items-center">
-                          <span class="badge bg-secondary me-3">${String.fromCharCode(65 + index)}</span>
-                          <span>${answer}</span>
-                      </div>
-                  </div>
-              </div>
-          `;
-      });
-
-      elements.answerOptions.innerHTML = html;
-  }
-
-  function selectAnswer(element, answer) {
-      // Vorherige Auswahl entfernen
-      document.querySelectorAll('.answer-option').forEach(opt => {
-          opt.classList.remove('selected');
-      });
-
-      // Neue Auswahl markieren
-      element.classList.add('selected');
-      selectedAnswer = answer;
-      elements.submitAnswerBtn.disabled = false;
-  }
-
-  function startTimer(timeLimit) {
-      clearInterval(timerInterval);
-      timeLeft = timeLimit / 1000;
-      elements.timeLeft.textContent = timeLeft;
-
-      timerInterval = setInterval(() => {
-          timeLeft--;
-          elements.timeLeft.textContent = timeLeft;
-
-          // Fortschrittsbalken
-          const percentage = (timeLeft / (timeLimit / 1000)) * 100;
-          elements.timerProgress.style.width = `${percentage}%`;
-
-          // Farbwechsel
-          if (timeLeft <= 10) {
-              elements.timerProgress.style.background = 'linear-gradient(90deg, #e74a3b, #f6c23e)';
-          }
-
-          if (timeLeft <= 0) {
-              clearInterval(timerInterval);
-              submitAnswer(); // Automatisch absenden
-          }
-      }, 1000);
-  }
-
-  function submitAnswer() {
-      if (!selectedAnswer) return;
-
-      clearInterval(timerInterval);
-      elements.submitAnswerBtn.disabled = true;
-
-      // Antwort an Server senden
-      stompClient.send("/app/game.answer", {}, JSON.stringify({
-          gameId: currentGame.id,
-          playerId: currentPlayer.id,
-          roundNumber: currentRound,
-          answer: selectedAnswer
-      }));
-
-      addGameLog(`✅ Deine Antwort: "${selectedAnswer}"`);
-  }
-
-  function showRoundResult(resultData) {
-      // Richtige Antwort markieren
-      const correctAnswer = resultData.correctAnswer;
-      document.querySelectorAll('.answer-option').forEach(opt => {
-          const answer = opt.getAttribute('data-answer');
-          if (answer === correctAnswer) {
-              opt.classList.add('correct');
-          } else if (answer === selectedAnswer && answer !== correctAnswer) {
-              opt.classList.add('incorrect');
-          }
-          opt.style.pointerEvents = 'none'; // Deaktiviere Klicks
-      });
-
-      // Punkte anzeigen
-      if (resultData.player1Points) {
-          elements.player1Score.textContent =
-              parseInt(elements.player1Score.textContent) + resultData.player1Points;
-      }
-
-      if (resultData.player2Points) {
-          elements.player2Score.textContent =
-              parseInt(elements.player2Score.textContent) + resultData.player2Points;
-      }
-
-      // Nächste Runde Button anzeigen
-      if (currentRound < TOTAL_ROUNDS) {
-          elements.nextRoundBtn.classList.remove('d-none');
-      }
-
-      addGameLog(resultData.message || `Runde ${currentRound} beendet!`);
-  }
+    addGameLog(result.message || `Runde ${currentRound} beendet!`);
+}
 
   function nextRound() {
-      currentRound++;
-      elements.nextRoundBtn.classList.add('d-none');
-
-      // Nächste Runde vom Server anfordern
-      stompClient.send("/app/game.nextRound", {}, JSON.stringify({
-          gameId: currentGame.id,
-          roundNumber: currentRound
-      }));
+    hide('nextRoundBtn');
+    stompClient.send('/app/game.nextRound', {}, JSON.stringify({
+      gameId: currentGame.id,
+      roundNumber: currentRound + 1
+    }));
   }
 
+  function endGame() {
+    stopTimer();
+
+    const p1 = +elements.player1Score.textContent;
+    const p2 = +elements.player2Score.textContent;
+
+    setText('finalScorePlayer1', p1);
+    setText('finalScorePlayer2', p2);
+
+    elements.resultTitle.textContent =
+      p1 > p2 ? '🏆 Gewonnen!' : p2 > p1 ? '😔 Verloren' : '🤝 Unentschieden';
+
+    show('gameResultModal');
+  }
+
+  /* =========================
+     UI HELPERS
+  ========================= */
   function opponentAnswered() {
-      elements.opponentAnswerStatus.textContent = '✓';
-      elements.opponentAnswerStatus.classList.add('answered');
-      addGameLog('👀 Gegner hat geantwortet...');
+    setText('opponentAnswerStatus', '✓');
+    elements.opponentAnswerStatus.classList.add('answered');
   }
 
-  function updateScores(scoreData) {
-      if (scoreData.player1Score !== undefined) {
-          elements.player1Score.textContent = scoreData.player1Score;
-      }
-      if (scoreData.player2Score !== undefined) {
-          elements.player2Score.textContent = scoreData.player2Score;
-      }
+  function updateScores(scores = {}) {
+    if (scores.player1 !== undefined) setText('player1Score', scores.player1);
+    if (scores.player2 !== undefined) setText('player2Score', scores.player2);
   }
 
   function showCountdown(seconds) {
-      elements.countdownDisplay.textContent = seconds;
-      elements.countdownOverlay.classList.remove('d-none');
-
-      if (seconds <= 0) {
-          setTimeout(() => {
-              elements.countdownOverlay.classList.add('d-none');
-          }, 1000);
-      }
+    setText('countdownDisplay', seconds);
+    show('countdownOverlay');
+    if (seconds <= 0) setTimeout(() => hide('countdownOverlay'), 1000);
   }
 
   function showGameStart(data) {
-      // Gegner-Daten anzeigen
-      if (currentGame.player2) {
-          elements.player2Name.textContent = currentGame.player2.username;
-          if (currentGame.player2.profileImageUrl) {
-              elements.player2Avatar.src = currentGame.player2.profileImageUrl;
-          }
+    setText('gameCategory', data.category);
+    if (data.player2) {
+      setText('player2Name', data.player2.username);
+      if (data.player2.profileImageUrl) {
+        elements.player2Avatar.src = data.player2.profileImageUrl;
       }
-
-      elements.gameCategory.textContent = data.category || 'QuizDuell';
-      addGameLog('🎮 Spiel gestartet! Viel Erfolg!');
+    }
   }
 
-  function endGame(data) {
-      clearInterval(timerInterval);
+  /* =========================
+     RESET & EVENTS
+  ========================= */
+  function resetRound() {
+    selectedAnswer = null;
+    hide('nextRoundBtn');
+    setText('opponentAnswerStatus', '?');
+    stopTimer();
 
-      // Ergebnis anzeigen
-      const player1Score = parseInt(elements.player1Score.textContent);
-      const player2Score = parseInt(elements.player2Score.textContent);
-
-      elements.finalScorePlayer1.textContent = player1Score;
-      elements.finalScorePlayer2.textContent = player2Score;
-
-      if (player1Score > player2Score) {
-          elements.resultTitle.textContent = '🏆 Gewonnen!';
-          elements.resultMessage.textContent = 'Herzlichen Glückwunsch! Du hast gewonnen!';
-          elements.resultIcon.textContent = '🎉';
-      } else if (player2Score > player1Score) {
-          elements.resultTitle.textContent = '😔 Verloren';
-          elements.resultMessage.textContent = 'Leider verloren. Nächstes Mal bestimmt!';
-          elements.resultIcon.textContent = '💪';
-      } else {
-          elements.resultTitle.textContent = '🤝 Unentschieden';
-          elements.resultMessage.textContent = 'Spannendes Spiel! Punktgleich!';
-          elements.resultIcon.textContent = '⚖️';
-      }
-
-      elements.gameResultModal.classList.remove('d-none');
-      addGameLog(data.message || 'Spiel beendet!');
-  }
-
-  function returnToLobby() {
-      window.location.href = '/lobby.html';
-  }
-
-  function playAgain() {
-      // Zur Lobby mit gleicher Kategorie
-      window.location.href = `/lobby.html?category=${encodeURIComponent(currentGame.category)}`;
+    $$('.answer-btn').forEach(btn => {
+      btn.className = 'answer-btn';
+      btn.disabled = false;
+    });
   }
 
   function setupEventListeners() {
-      elements.submitAnswerBtn.addEventListener('click', submitAnswer);
-      elements.nextRoundBtn.addEventListener('click', nextRound);
+    $$('.answer-btn').forEach(btn =>
+      btn.addEventListener('click', () => selectAnswer(btn.dataset.answer))
+    );
 
-    // Antwort-Buttons A-D klicken (DB-Format)
-    document.getElementById("answerA").addEventListener("click", () => pickLetter("A"));
-    document.getElementById("answerB").addEventListener("click", () => pickLetter("B"));
-    document.getElementById("answerC").addEventListener("click", () => pickLetter("C"));
-    document.getElementById("answerD").addEventListener("click", () => pickLetter("D"));
+    elements.submitAnswerBtn.addEventListener('click', () =>
+      selectedAnswer ? sendAnswerToServer(selectedAnswer) : null
+    );
 
-    function pickLetter(letter) {
-      selectedAnswer = letter; // Du sendest dann "A/B/C/D" an den Server
-      elements.submitAnswerBtn.disabled = false;
-      console.log("🟦 Auswahl:", selectedAnswer);
-    }
-
+    elements.nextRoundBtn.addEventListener('click', nextRound);
   }
 
-  function resetRound() {
-      selectedAnswer = null;
-      elements.submitAnswerBtn.disabled = true;
-      elements.nextRoundBtn.classList.add('d-none');
-      elements.opponentAnswerStatus.textContent = '?';
-      elements.opponentAnswerStatus.classList.remove('answered');
-      elements.timerProgress.style.background = 'linear-gradient(90deg, #1cc88a, #4e73df)';
-  }
-
+  /* =========================
+     DISPLAY & LOG
+  ========================= */
   function updateGameDisplay() {
-      if (!currentGame) return;
-
-      elements.gameCategory.textContent = currentGame.category || 'QuizDuell';
-
-      if (currentGame.player1) {
-          elements.player1Name.textContent = currentGame.player1.username;
+    setText('gameCategory', currentGame.category);
+    if (currentGame.player2) {
+      setText('player2Name', currentGame.player2.username);
+      if (currentGame.player2.profileImageUrl) {
+        elements.player2Avatar.src = currentGame.player2.profileImageUrl;
       }
-
-      if (currentGame.player2) {
-          elements.player2Name.textContent = currentGame.player2.username;
-      }
+    }
   }
 
   function addGameLog(message) {
-      const timestamp = new Date().toLocaleTimeString();
-      const logEntry = document.createElement('div');
-      logEntry.className = 'mb-1';
-      logEntry.innerHTML = `<small class="text-muted">[${timestamp}]</small> ${message}`;
-      elements.gameLog.appendChild(logEntry);
-      elements.gameLog.scrollTop = elements.gameLog.scrollHeight;
+    const div = document.createElement('div');
+    div.innerHTML = `<small>[${new Date().toLocaleTimeString()}]</small> ${message}`;
+    elements.gameLog.appendChild(div);
+    elements.gameLog.scrollTop = elements.gameLog.scrollHeight;
   }
+function handleAnswerFeedback(data) {
+    console.log('📝 Antwort-Feedback:', data);
 
-  // Utility-Funktionen
-  function shuffleArray(array) {
-      for (let i = array.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [array[i], array[j]] = [array[j], array[i]];
-      }
-      return array;
-  }
+    if (!data) return;
+
+    // WICHTIG: Rufe die visuelle Feedback-Funktion auf!
+    showAnswerResult(
+        data.isCorrect,          // boolean
+        data.correctAnswer,      // string
+        data.givenAnswer,        // string
+        data.points || 0         // number
+    );
+
+    // Zeige Feedback an
+    const message = data.message || (data.isCorrect ? "✅ Richtig!" : "❌ Falsch!");
+    addGameLog(message);
+
+    if (data.correctAnswer && data.givenAnswer) {
+        addGameLog(`Richtige Antwort: ${data.correctAnswer}`);
+        addGameLog(`Deine Antwort: ${data.givenAnswer}`);
+    }
+
+    if (data.points !== undefined) {
+        addGameLog(`Punkte: +${data.points}`);
+    }
+}
+
+function handleOpponentFeedback(data) {
+    console.log('👥 Gegner-Feedback:', data);
+
+    if (!data) return;
+
+    const message = data.message ||
+        (data.opponentCorrect ? "Gegner hat richtig geantwortet" : "Gegner hat falsch geantwortet");
+
+    addGameLog(message);
+
+    if (data.opponentPoints !== undefined) {
+        addGameLog(`Gegner Punkte: +${data.opponentPoints}`);
+    }
+}
+
+function handleUserMessage(data) {
+    console.log('📨 User-Nachricht:', data);
+
+    if (!data || !data.type) return;
+
+    switch(data.type) {
+        case 'ANSWER_CONFIRMED':
+            addGameLog('✅ Antwort bestätigt: ' + (data.message || ''));
+            break;
+        case 'OPPONENT_ANSWERED':
+            opponentAnswered();
+            break;
+        case 'ANSWER_FEEDBACK':
+            handleAnswerFeedback(data);
+            break;
+        case 'OPPONENT_ANSWER_FEEDBACK':
+            handleOpponentFeedback(data);
+            break;
+    }
+}
+
+ function showAnswerResult(isCorrect, correctAnswer, givenAnswer, points) {
+    // Richtige/Falsche Antwort visuell anzeigen
+    document.querySelectorAll('.answer-btn').forEach(btn => {
+        const btnAnswer = btn.getAttribute('data-answer');
+        const btnText = btn.textContent;
+
+        // Finde die richtige Antwort
+        const correctLetter = getLetterForAnswer(correctAnswer);
+
+        if (btnAnswer === correctLetter) {
+            btn.classList.add('correct');
+        } else if (btnAnswer === givenAnswer && !isCorrect) {
+            btn.classList.add('incorrect');
+        }
+    });
+
+    // Punkte-Animation
+    if (points > 0) {
+        animatePoints(points);
+    }
+}
+
+function getLetterForAnswer(answerText) {
+    // Backend sendet korrekte Antwort als BUCHSTABE ("A", "B", "C", "D")
+    // NICHT als vollständigen Text ("Paris")
+    // Also einfach den Buchstaben zurückgeben
+    if (answerText && ['A','B','C','D'].includes(answerText.toUpperCase())) {
+        return answerText.toUpperCase();
+    }
+
+    // Fallback: Versuche aus dem Text den Buchstaben zu extrahieren
+    const buttons = document.querySelectorAll('.answer-btn');
+    for (const btn of buttons) {
+        const text = btn.textContent;
+        // Prüfe ob der Text die Antwort enthält
+        if (text.includes(answerText)) {
+            return btn.getAttribute('data-answer');
+        }
+    }
+    return null;
+}
+
+function animatePoints(points, isPlayer1 = true) {
+    const scoreElement = isPlayer1 ? elements.player1Score : elements.player2Score;
+    const originalScore = parseInt(scoreElement.textContent) || 0;
+    const newScore = originalScore + points;
+
+    console.log(`💰 Animiere Punkte: ${originalScore} → ${newScore} (+${points})`);
+
+    // Direkte Aktualisierung für schnelles Feedback
+    scoreElement.textContent = newScore;
+
+    // Animationseffekt
+    scoreElement.style.transition = 'all 0.3s ease';
+    scoreElement.style.transform = 'scale(1.3)';
+    scoreElement.style.color = points > 0 ? '#1cc88a' : '#e74a3b';
+
+    setTimeout(() => {
+        scoreElement.style.transform = 'scale(1)';
+        scoreElement.style.color = '';
+    }, 300);
+
+    // Optional: Count-up Animation
+    if (points > 5) {
+        let current = originalScore;
+        const step = Math.max(1, Math.ceil(points / 20));
+
+        const interval = setInterval(() => {
+            current += step;
+            if (current >= newScore) {
+                current = newScore;
+                clearInterval(interval);
+            }
+            scoreElement.textContent = current;
+        }, 20);
+    }
+}
+
 </script>
+
+
 </body>
 </html>

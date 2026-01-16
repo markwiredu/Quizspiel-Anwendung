@@ -2,6 +2,8 @@ package paf_grp_k.repository;
 
 import paf_grp_k.model.Player;
 import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
 import java.util.Optional;
 
 /**
@@ -32,4 +34,6 @@ public interface PlayerRepository extends JpaRepository<Player, Long> {
      *         ansonsten {@code false}
      */
     boolean existsByUsername(String username);
+
+    List<Player> findAllByOrderByGamesWonDesc();
 }
