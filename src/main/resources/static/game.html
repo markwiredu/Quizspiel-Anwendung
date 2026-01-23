@@ -283,14 +283,23 @@
   <!-- Frage-Bereich -->
   <div class="question-card">
     <div class="text-center mb-4">
-      <h3 id="questionCategory" class="badge bg-secondary"></h3>
-      <h2 id="questionText">Frage wird geladen...</h2>
+      <h3 id="questionCategory" class="badge bg-secondary">kategorie</h3>
+      <h2 id="questionText" class="mt-4 mb-4">Lade Frage...</h2>
+    </div>
 
-      <div id="answers">
-        <button class="answer-btn" data-answer="A" id="answerA">A: ...</button>
-        <button class="answer-btn" data-answer="B" id="answerB">B: ...</button>
-        <button class="answer-btn" data-answer="C" id="answerC">C: ...</button>
-        <button class="answer-btn" data-answer="D" id="answerD">D: ...</button>
+    <!-- Antwort-Buttons -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <button class="answer-btn btn btn-light w-100 mb-2 p-3 text-start" data-answer="A" id="answerA" style="border: 2px solid #dee2e6; border-radius: 10px;">A: ...</button>
+      </div>
+      <div class="col-12">
+        <button class="answer-btn btn btn-light w-100 mb-2 p-3 text-start" data-answer="B" id="answerB" style="border: 2px solid #dee2e6; border-radius: 10px;">B: ...</button>
+      </div>
+      <div class="col-12">
+        <button class="answer-btn btn btn-light w-100 mb-2 p-3 text-start" data-answer="C" id="answerC" style="border: 2px solid #dee2e6; border-radius: 10px;">C: ...</button>
+      </div>
+      <div class="col-12">
+        <button class="answer-btn btn btn-light w-100 mb-2 p-3 text-start" data-answer="D" id="answerD" style="border: 2px solid #dee2e6; border-radius: 10px;">D: ...</button>
       </div>
     </div>
 
@@ -300,11 +309,6 @@
     </div>
     <div class="text-center mb-4">
       <span id="timeLeft" class="fw-bold">30</span> Sekunden verbleibend
-    </div>
-
-    <!-- Antwort-Optionen -->
-    <div class="row" id="answerOptions">
-      <!-- Wird dynamisch geladen -->
     </div>
   </div>
 
@@ -491,11 +495,23 @@
 
   function subscribeAll() {
     const id = currentGame.id;
+    console.log('🔌 Subscriptions werden eingerichtet für Spiel:', id);
 
-    subscribe(`/topic/game/${id}`, handleGameMessage);
+    // Haupt-Game-Topic mit ausführlichem Logging
+    subscribe(`/topic/game/${id}`, (data) => {
+      console.log('📨 RAW MESSAGE EMPFANGEN:', data);
+      console.log('   Message Type:', data.type);
+      console.log('   Komplette Daten:', JSON.stringify(data, null, 2));
+      handleGameMessage(data);
+    });
+
     subscribe(`/topic/game/${id}/timer`, handleTimerMessage);
-    subscribe(`/topic/game/${id}/countdown`, d => d.type === 'COUNTDOWN' && showCountdown(d.seconds));
+    subscribe(`/topic/game/${id}/countdown`, d => {
+      console.log('⏰ Countdown:', d);
+      if (d.type === 'COUNTDOWN') showCountdown(d.seconds);
+    });
     subscribe(`/topic/game/${id}/result`, d => {
+      console.log('📊 Result:', d);
       showRoundResult(d.result);
       updateScores(d.scores);
     });
@@ -503,6 +519,8 @@
     if (currentPlayer?.id) {
       subscribe(`/user/queue/game.answer.feedback`, handleAnswerFeedback);
     }
+
+    console.log('✅ Alle Subscriptions eingerichtet');
   }
 
   /* =========================
@@ -546,6 +564,8 @@
      GAME FLOW
   ========================= */
   function handleGameMessage(data) {
+    console.log('📨 NACHRICHT EMPFANGEN:', data.type, data);
+
     const handlers = {
       GAME_START: () => showGameStart(data),
       ROUND_START: () => startNewRound(data),
@@ -563,11 +583,19 @@
   }
 
   function displayQuestion(q) {
-    setText('questionText', q.questionText);
+    console.log('🔍 DEBUG displayQuestion:', q);
+    console.log('   questionText:', q.questionText);
+    console.log('   category:', q.category);
+    console.log('   optionA:', q.optionA);
+    console.log('   optionB:', q.optionB);
+    console.log('   optionC:', q.optionC);
+    console.log('   optionD:', q.optionD);
+
+    setText('questionText', q.questionText || '??? Keine Frage geladen ???');
     setText('questionCategory', q.category);
 
     ['A','B','C','D'].forEach(l =>
-      setText(`answer${l}`, `${l}: ${q['option'+l]}`)
+            setText(`answer${l}`, `${l}: ${q['option'+l]}`)
     );
 
     elements.submitAnswerBtn.disabled = true;
@@ -677,12 +705,30 @@
   }
 
   function showGameStart(data) {
+    console.log('🎮 DEBUG showGameStart AUFGERUFEN');
+    console.log('   Komplette data:', JSON.stringify(data, null, 2));
+    console.log('   data.type:', data.type);
+    console.log('   data.round:', data.round);
+    console.log('   data.round?.question:', data.round?.question);
+
     setText('gameCategory', data.category);
     if (data.player2) {
       setText('player2Name', data.player2.username);
       if (data.player2.profileImageUrl) {
         elements.player2Avatar.src = data.player2.profileImageUrl;
       }
+    }
+
+    // 🆕 WICHTIG: Erste Runde anzeigen!
+    if (data.round && data.round.question) {
+      console.log('✅ Zeige erste Frage an');
+      currentRound = 1;
+      setText('currentRound', 'Runde ' + currentRound + '/' + TOTAL_ROUNDS);
+      displayQuestion(data.round.question);
+    } else {
+      console.error('❌ Keine Frage in GAME_START empfangen!');
+      console.error('   data.round existiert?', !!data.round);
+      console.error('   data.round.question existiert?', !!(data.round && data.round.question));
     }
   }
 

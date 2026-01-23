@@ -54,11 +54,23 @@ public class GameService {
         Game game = gameRepository.findById(gameId)
                 .orElseThrow(() -> new RuntimeException("Game not found"));
 
+        // 🔍 WICHTIG: Debug-Ausgaben
+        System.out.println("========================================");
+        System.out.println("🔍 DEBUG startNewRound:");
+        System.out.println("   Game ID: " + gameId);
+        System.out.println("   Game Category: '" + game.getCategory() + "'");
+        System.out.println("   Round Number: " + roundNumber);
+        System.out.println("========================================");
+
         List<Question> questions = questionRepository.findRandomQuestionsByCategory(
                 game.getCategory(), 1
         );
 
+        System.out.println("🔍 Gefundene Fragen mit Kategorie-Filter: " + questions.size());
+
         if (questions.isEmpty()) {
+            System.out.println("⚠️ KEINE Fragen gefunden für Kategorie: '" + game.getCategory() + "'");
+            System.out.println("⚠️ Fallback zu allen Kategorien!");
             questions = questionRepository.findRandomQuestions(1);
         }
 
@@ -67,6 +79,9 @@ public class GameService {
         }
 
         Question question = questions.get(0);
+        System.out.println("✅ Ausgewählte Frage: " + question.getQuestionText());
+        System.out.println("   Frage-Kategorie: '" + question.getCategory() + "'");
+        System.out.println("========================================");
 
         Round round = new Round();
         round.setGame(game);
@@ -78,7 +93,6 @@ public class GameService {
 
         return roundRepository.save(round);
     }
-
     public Game getGameById(Long gameId) {
         return gameRepository.findById(gameId)
                 .orElseThrow(() -> new RuntimeException("Game not found with id: " + gameId));
