@@ -84,6 +84,8 @@ public class StatisticsController {
             entry.put("totalGames", player.getTotalGames());
             entry.put("gamesWon", player.getGamesWon());
             entry.put("gamesLost", player.getGamesLost());
+            entry.put("highscore", player.getHighscore());
+
 
             // Gewinnrate berechnen
             double winRate = player.getTotalGames() > 0 ?
@@ -116,56 +118,6 @@ public class StatisticsController {
         return ResponseEntity.ok(top10);
     }
 
-    /**
-     * Alternative Methode mit IntStream
-     */
-    @GetMapping("/leaderboard2")
-    public ResponseEntity<List<Map<String, Object>>> getLeaderboard2() {
-        log.info("🏆 Hole Rangliste (Methode 2)");
-
-        List<Player> players = playerRepository.findAll();
-
-        // Spieler filtern und sortieren
-        List<Player> sortedPlayers = players.stream()
-                .filter(p -> p.getTotalGames() > 0)
-                .sorted((p1, p2) -> {
-                    // 1. Sortieren nach Siegen (absteigend)
-                    int winsCompare = Integer.compare(p2.getGamesWon(), p1.getGamesWon());
-                    if (winsCompare != 0) return winsCompare;
-
-                    // 2. Bei gleichen Siegen: nach Gewinnrate
-                    double winRate1 = p1.getTotalGames() > 0 ?
-                            (double) p1.getGamesWon() / p1.getTotalGames() : 0;
-                    double winRate2 = p2.getTotalGames() > 0 ?
-                            (double) p2.getGamesWon() / p2.getTotalGames() : 0;
-                    return Double.compare(winRate2, winRate1);
-                })
-                .collect(Collectors.toList());
-
-        // Mit IntStream und forEach arbeiten
-        List<Map<String, Object>> leaderboard = new ArrayList<>();
-        IntStream.range(0, sortedPlayers.size()).forEach(i -> {
-            Player player = sortedPlayers.get(i);
-            Map<String, Object> entry = new HashMap<>();
-
-            entry.put("rank", i + 1);
-            entry.put("playerId", player.getId());
-            entry.put("username", player.getUsername());
-            entry.put("profileImageUrl", player.getProfileImageUrl());
-            entry.put("totalGames", player.getTotalGames());
-            entry.put("gamesWon", player.getGamesWon());
-            entry.put("gamesLost", player.getGamesLost());
-
-            // Gewinnrate berechnen
-            double winRate = player.getTotalGames() > 0 ?
-                    (double) player.getGamesWon() / player.getTotalGames() * 100 : 0;
-            entry.put("winRate", Math.round(winRate * 10) / 10.0);
-
-            leaderboard.add(entry);
-        });
-
-        return ResponseEntity.ok(leaderboard);
-    }
 
     /**
      * Spieler-Statistik aktualisieren (für Testzwecke)

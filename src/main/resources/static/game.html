@@ -20,11 +20,13 @@
     }
 
     .player-panel {
-        border-radius: 15px;
-        padding: 20px;
-        margin: 10px;
-        transition: all 0.3s ease;
-    }
+  min-height: 260px;           /* ✅ gleiche Höhe wie blau */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
 
     .player1-panel {
         background: linear-gradient(135deg, var(--player1-color) 0%, #2e59d9 100%);
@@ -35,6 +37,20 @@
         background: linear-gradient(135deg, var(--player2-color) 0%, #c0352b 100%);
         color: white;
     }
+
+    .col-4 > .player-panel {
+  width: 100%;
+}
+
+
+.player-panel h5 {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 
     .question-card {
         background: white;
@@ -54,6 +70,30 @@
         cursor: pointer;
         transition: all 0.2s ease;
     }
+
+    .answers-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;                 /* weniger Abstand */
+  max-width: 600px;          /* macht es zentraler */
+  margin: 0 auto;            /* zentriert */
+}
+
+.answers-grid .answer-btn {
+  height: 90px;              /* größere Kacheln */
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-radius: 14px;
+  border: 2px solid #dee2e6 !important;
+  text-align: center !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+
+
+
 
     .answer-option:hover {
         transform: translateY(-2px);
@@ -265,20 +305,13 @@
         <h5 id="player2Name">Gegner</h5>
         <div class="score-display" id="player2Score">0</div>
         <small>Punkte</small>
-        <div class="mt-2 d-flex justify-content-center align-items-center">
-          <small>Antwort:</small>
-          <div id="opponentAnswerStatus" class="opponent-answer-indicator">
-            ?
-          </div>
+
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Runden-Anzeige -->
-  <div class="round-indicator">
-    <span id="roundNumber">1</span>/<span id="totalRounds">5</span>
-  </div>
+
 
   <!-- Frage-Bereich -->
   <div class="question-card">
@@ -287,21 +320,17 @@
       <h2 id="questionText" class="mt-4 mb-4">Lade Frage...</h2>
     </div>
 
-    <!-- Antwort-Buttons -->
-    <div class="row mb-4">
-      <div class="col-12">
-        <button class="answer-btn btn btn-light w-100 mb-2 p-3 text-start" data-answer="A" id="answerA" style="border: 2px solid #dee2e6; border-radius: 10px;">A: ...</button>
-      </div>
-      <div class="col-12">
-        <button class="answer-btn btn btn-light w-100 mb-2 p-3 text-start" data-answer="B" id="answerB" style="border: 2px solid #dee2e6; border-radius: 10px;">B: ...</button>
-      </div>
-      <div class="col-12">
-        <button class="answer-btn btn btn-light w-100 mb-2 p-3 text-start" data-answer="C" id="answerC" style="border: 2px solid #dee2e6; border-radius: 10px;">C: ...</button>
-      </div>
-      <div class="col-12">
-        <button class="answer-btn btn btn-light w-100 mb-2 p-3 text-start" data-answer="D" id="answerD" style="border: 2px solid #dee2e6; border-radius: 10px;">D: ...</button>
-      </div>
+
+    <!-- Antwort-Buttons (Grid) -->
+    <div class="answers-grid mb-4">
+      <button class="answer-btn btn btn-light" data-answer="A" id="answerA">A: ...</button>
+      <button class="answer-btn btn btn-light" data-answer="B" id="answerB">B: ...</button>
+      <button class="answer-btn btn btn-light" data-answer="C" id="answerC">C: ...</button>
+      <button class="answer-btn btn btn-light" data-answer="D" id="answerD">D: ...</button>
     </div>
+
+
+
 
     <!-- Timer -->
     <div class="timer-bar">
@@ -375,8 +404,16 @@
   let currentPlayer = null;
   let currentRound = 1;
   const TOTAL_ROUNDS = 5;
+  let mySlot = 1;        // 1 oder 2 (player1 oder player2 im Game)
+  let mePlayer = null;   // game.player1 oder game.player2
+  let oppPlayer = null;  // der andere
+  let isPlayer1 = true;
+  let opponentPlayer = null;
+  let didInitialSync = false;
+let didQuestionSyncRound = 0;
 
-  let selectedAnswer = null;
+ let selectedAnswer = null;
+  let answerSent = false;
   let timerInterval = null;
   let timeLeft = 30;
 
@@ -456,25 +493,53 @@
   }
 
   function loadGameFromStorage() {
-    const saved = localStorage.getItem('currentGame');
-    if (!saved) return redirectLobby();
-    currentGame = JSON.parse(saved);
-    updateGameDisplay();
-  }
+  const saved = localStorage.getItem('currentGame');
+  if (!saved) return redirectLobby();
+
+  currentGame = JSON.parse(saved);
+
+  updateGameDisplay();          // beibehalten
+  applyPlayerRolesFromGame();   // danach Rollen richtig setzen
+}
 
   /* =========================
      GAME FETCH
   ========================= */
   async function fetchGameData(gameId) {
-    try {
-      const res = await fetch(`/api/games/${gameId}`);
-      currentGame = await res.json();
-      localStorage.setItem('currentGame', JSON.stringify(currentGame));
-      updateGameDisplay();
-    } catch {
-      redirectLobby();
-    }
+  try {
+    const res = await fetch(`/api/games/${gameId}`);
+    currentGame = await res.json();
+    localStorage.setItem('currentGame', JSON.stringify(currentGame));
+
+    updateGameDisplay();          // beibehalten
+    applyPlayerRolesFromGame();   // danach Rollen richtig setzen
+  } catch (e) {
+    redirectLobby();
   }
+}
+
+async function syncFirstQuestionIfMissing(gameId) {
+  const qText = $('questionText')?.textContent?.trim() || '';
+  const aText = $('answerA')?.textContent?.trim() || '';
+
+  const missing =
+    qText === '' || qText.includes('???') || qText.includes('Lade') ||
+    aText === '' || aText.includes('...');
+
+  if (!missing) return;
+
+  const rounds = await fetch(`/api/games/${gameId}/rounds`, { cache: 'no-store' }).then(r => r.json());
+
+  // letzte Runde nehmen (max roundNumber)
+  const last = rounds.reduce((best, r) => (!best || r.roundNumber > best.roundNumber ? r : best), null);
+
+  if (last?.question) {
+    currentRound = last.roundNumber;
+    setText('currentRound', `Runde ${currentRound}/${TOTAL_ROUNDS}`);
+    displayQuestion(last.question);
+  }
+}
+
 
   /* =========================
      WEBSOCKET
@@ -493,35 +558,59 @@
   const subscribe = (topic, handler) =>
     stompClient.subscribe(topic, msg => handler(JSON.parse(msg.body)));
 
-  function subscribeAll() {
-    const id = currentGame.id;
-    console.log('🔌 Subscriptions werden eingerichtet für Spiel:', id);
+ function subscribeAll() {
+  const id = currentGame.id;
+  console.log('🔌 Subscriptions werden eingerichtet für Spiel:', id);
 
-    // Haupt-Game-Topic mit ausführlichem Logging
-    subscribe(`/topic/game/${id}`, (data) => {
-      console.log('📨 RAW MESSAGE EMPFANGEN:', data);
-      console.log('   Message Type:', data.type);
-      console.log('   Komplette Daten:', JSON.stringify(data, null, 2));
-      handleGameMessage(data);
-    });
+  subscribe(`/topic/game/${id}`, (data) => {
+    console.log('📨 RAW MESSAGE EMPFANGEN:', data);
 
-    subscribe(`/topic/game/${id}/timer`, handleTimerMessage);
-    subscribe(`/topic/game/${id}/countdown`, d => {
-      console.log('⏰ Countdown:', d);
-      if (d.type === 'COUNTDOWN') showCountdown(d.seconds);
-    });
-    subscribe(`/topic/game/${id}/result`, d => {
-      console.log('📊 Result:', d);
-      showRoundResult(d.result);
-      updateScores(d.scores);
-    });
+    console.log("MSG", data.type, {
+    roundNumber: data.roundNumber,
+    roundNumberGameStart: data.round?.number,
+    hasQuestion: !!data.question,
+    hasRoundQuestion: !!data.round?.question
+  });
 
-    if (currentPlayer?.id) {
-      subscribe(`/user/queue/game.answer.feedback`, handleAnswerFeedback);
+    handleGameMessage(data);
+  });
+
+  subscribe(`/topic/game/${id}/timer`, handleTimerMessage);
+
+  subscribe(`/topic/game/${id}/countdown`, d => {
+    if (d.type === 'COUNTDOWN') showCountdown(d.seconds);
+  });
+
+  subscribe(`/topic/game/${id}/result`, d => {
+    showRoundResult(d.result);
+    updateScores(d.scores);
+
+    // ✅ Scores lokal speichern (für Reload)
+    if (d.scores) {
+      currentGame.scorePlayer1 = d.scores.player1;
+      currentGame.scorePlayer2 = d.scores.player2;
+      localStorage.setItem("currentGame", JSON.stringify(currentGame));
     }
 
-    console.log('✅ Alle Subscriptions eingerichtet');
-  }
+
+    if (d?.result?.gameFinished === true && !didEndGame) {
+  didEndGame = true;
+  endGame({ scores: d.scores });
+}
+  });
+
+  if (!didInitialSync) {
+  didInitialSync = true;
+
+  // Rollen + Scores setzen
+  applyPlayerRolesFromGame();
+
+  // falls erste Frage unvollständig: aus /rounds nachziehen
+  syncFirstQuestionIfMissing(id);
+}
+
+}
+
 
   /* =========================
      TIMER
@@ -548,17 +637,42 @@
   }
 
   function timeOut() {
-    stopTimer();
-    if (!selectedAnswer) sendAnswerToServer('TIMEOUT');
-  }
+  stopTimer();
+  if (!answerSent) sendAnswerToServer('TIMEOUT');
+}
 
-  function handleTimerMessage(data) {
-    if (data.type === 'TIMER_START') startTimer(data.timeLimit);
-    if (data.type === 'TIMER_UPDATE') {
-      timeLeft = data.remainingSeconds;
-      updateTimer();
+function handleTimerMessage(data) {
+  if (!data) return;
+
+  // Manche Server schicken nur TIMER_UPDATE, ohne TIMER_START
+  if (data.type === 'TIMER_START') {
+    timeLeft = data.timeLimit ?? 30;
+    updateTimer();
+    return;
+  }
+if (data.type === 'TIMER_UPDATE') {
+  timeLeft = Number(data.remainingSeconds ?? timeLeft);
+  updateTimer();
+
+  // Wenn Timer läuft, aber Frage/Antworten leer sind: 1x pro Runde nachladen
+  if (didQuestionSyncRound !== (data.roundNumber ?? 0)) {
+    const qText = document.getElementById('questionText')?.textContent?.trim() || '';
+    const aText = document.getElementById('answerA')?.textContent?.trim() || '';
+
+    const questionMissing =
+      qText === '' || qText.includes('Lade') ||
+      aText === '' || aText.includes('...');
+
+    if (questionMissing && currentGame?.id) {
+      didQuestionSyncRound = data.roundNumber ?? 0;
+      fetchGameData(currentGame.id); // holt Game-Stand erneut
     }
   }
+}
+
+
+}
+
 
   /* =========================
      GAME FLOW
@@ -576,11 +690,20 @@
   }
 
   function startNewRound(data) {
-    resetRound();
-    currentRound = data.roundNumber || currentRound;
-    setText('currentRound', `Runde ${currentRound}/${TOTAL_ROUNDS}`);
-    displayQuestion(data.question);
+  resetRound();
+  currentRound = data.roundNumber || currentRound;
+  setText('currentRound', `Runde ${currentRound}/${TOTAL_ROUNDS}`);
+
+  const q = data.question || data.round?.question;
+  if (q) {
+    displayQuestion(q);
+  } else {
+    setText('questionText', 'Lade Frage...');
+    // Fallback: hole aktuellen Stand vom Server
+    fetchGameData(currentGame.id);
   }
+}
+
 
   function displayQuestion(q) {
     console.log('🔍 DEBUG displayQuestion:', q);
@@ -611,16 +734,20 @@
   }
 
   function sendAnswerToServer(answer) {
-    stompClient.send('/app/game.answer', {}, JSON.stringify({
-      gameId: currentGame.id,
-      playerId: currentPlayer.id,
-      roundNumber: currentRound,
-      answer
-    }));
+  if (answerSent) return;   // ✅ blockt doppelte Sends
+  answerSent = true;
 
-    elements.submitAnswerBtn.disabled = true;
-    $$('.answer-btn').forEach(b => b.disabled = true);
-  }
+  stompClient.send('/app/game.answer', {}, JSON.stringify({
+    gameId: currentGame.id,
+    playerId: currentPlayer.id,
+    roundNumber: currentRound,
+    answer
+  }));
+
+  elements.submitAnswerBtn.disabled = true;
+  $$('.answer-btn').forEach(b => b.disabled = true);
+}
+
 
   /* =========================
      RESULTS
@@ -650,9 +777,9 @@
     });
 
     // Animation für Punkte-Update
-    if (result.player1Points > 0) {
-        animatePoints(result.player1Points);
-    }
+    const myPoints = (mySlot === 1) ? result.player1Points : result.player2Points;
+if (myPoints > 0) animatePoints(myPoints, true);
+
 
     stopTimer();
     if (currentRound < TOTAL_ROUNDS) {
@@ -670,33 +797,54 @@
     }));
   }
 
-  function endGame() {
-    stopTimer();
+function endGame(data) {
+  stopTimer();
 
-    const p1 = +elements.player1Score.textContent;
-    const p2 = +elements.player2Score.textContent;
+  if (data?.scores) updateScores(data.scores);
 
-    setText('finalScorePlayer1', p1);
-    setText('finalScorePlayer2', p2);
+  const my = +elements.player1Score.textContent || 0;
+  const opp = +elements.player2Score.textContent || 0;
 
-    elements.resultTitle.textContent =
-      p1 > p2 ? '🏆 Gewonnen!' : p2 > p1 ? '😔 Verloren' : '🤝 Unentschieden';
+  setText('finalScorePlayer1', my);
+  setText('finalScorePlayer2', opp);
 
-    show('gameResultModal');
+  if (my > opp) {
+    setText('resultTitle', 'Gewonnen!');
+    setText('resultIcon', '🏆');
+    setText('resultMessage', 'Stark gespielt!');
+  } else if (opp > my) {
+    setText('resultTitle', 'Verloren');
+    setText('resultIcon', '😔');
+    setText('resultMessage', 'Kopf hoch – nächstes Spiel!');
+  } else {
+    setText('resultTitle', 'Unentschieden');
+    setText('resultIcon', '🤝');
+    setText('resultMessage', 'Gutes Match!');
   }
+
+  show('gameResultModal');
+}
+
 
   /* =========================
      UI HELPERS
   ========================= */
   function opponentAnswered() {
-    setText('opponentAnswerStatus', '✓');
-    elements.opponentAnswerStatus.classList.add('answered');
+  setText('opponentAnswerStatus', '✓');
+  elements.opponentAnswerStatus.classList.add('answered');
   }
 
-  function updateScores(scores = {}) {
-    if (scores.player1 !== undefined) setText('player1Score', scores.player1);
-    if (scores.player2 !== undefined) setText('player2Score', scores.player2);
-  }
+ function updateScores(scores = {}) {
+  if (!scores) return;
+
+  const my = isPlayer1 ? scores.player1 : scores.player2;
+  const opp = isPlayer1 ? scores.player2 : scores.player1;
+
+  if (my !== undefined) setText('player1Score', my);
+  if (opp !== undefined) setText('player2Score', opp);
+}
+
+
 
   function showCountdown(seconds) {
     setText('countdownDisplay', seconds);
@@ -719,33 +867,38 @@
       }
     }
 
-    // 🆕 WICHTIG: Erste Runde anzeigen!
-    if (data.round && data.round.question) {
-      console.log('✅ Zeige erste Frage an');
-      currentRound = 1;
-      setText('currentRound', 'Runde ' + currentRound + '/' + TOTAL_ROUNDS);
-      displayQuestion(data.round.question);
-    } else {
-      console.error('❌ Keine Frage in GAME_START empfangen!');
-      console.error('   data.round existiert?', !!data.round);
-      console.error('   data.round.question existiert?', !!(data.round && data.round.question));
-    }
+    // Erste Frage anzeigen, wenn im GAME_START enthalten
+const q = data.question || data.round?.question;
+if (q) {
+  currentRound = 1;
+  setText('currentRound', `Runde ${currentRound}/${TOTAL_ROUNDS}`);
+  displayQuestion(q);
+} else {
+  // Wenn nicht enthalten: lieber warten, bis ROUND_START kommt
+  console.warn('⚠️ GAME_START ohne Frage – warte auf ROUND_START...');
+}
+
   }
 
   /* =========================
      RESET & EVENTS
   ========================= */
-  function resetRound() {
-    selectedAnswer = null;
-    hide('nextRoundBtn');
-    setText('opponentAnswerStatus', '?');
-    stopTimer();
 
-    $$('.answer-btn').forEach(btn => {
-      btn.className = 'answer-btn';
-      btn.disabled = false;
-    });
-  }
+  function resetRound() {
+  selectedAnswer = null;
+  answerSent = false;
+  hide('nextRoundBtn');
+  setText('opponentAnswerStatus', '?');
+  stopTimer();
+
+  $$('.answer-btn').forEach(btn => {
+    btn.className = 'answer-btn';
+    btn.disabled = false;
+  });
+
+  elements.submitAnswerBtn.disabled = true;
+}
+
 
   function setupEventListeners() {
     $$('.answer-btn').forEach(btn =>
@@ -762,15 +915,60 @@
   /* =========================
      DISPLAY & LOG
   ========================= */
-  function updateGameDisplay() {
-    setText('gameCategory', currentGame.category);
-    if (currentGame.player2) {
-      setText('player2Name', currentGame.player2.username);
-      if (currentGame.player2.profileImageUrl) {
-        elements.player2Avatar.src = currentGame.player2.profileImageUrl;
-      }
-    }
+
+function updateGameDisplay() {
+  if (!currentGame || !currentPlayer) return;
+
+  const p1 = currentGame.player1;
+  const p2 = currentGame.player2;
+
+  // Wer bin ich?
+  const iAmP1 = p1 && p1.id === currentPlayer.id;
+  const me = iAmP1 ? p1 : p2;
+  const opp = iAmP1 ? p2 : p1;
+
+  // Anzeige: links = ich, rechts = Gegner
+  if (me) {
+    setText('player1Name', me.username);
+    if (me.profileImageUrl) elements.player1Avatar.src = me.profileImageUrl;
   }
+
+  if (opp) {
+    setText('player2Name', opp.username);
+    if (opp.profileImageUrl) elements.player2Avatar.src = opp.profileImageUrl;
+  } else {
+    setText('player2Name', 'Warte auf Gegner...');
+  }
+
+  setText('gameCategory', currentGame.category);
+}
+
+
+
+function applyPlayerRolesFromGame() {
+  if (!currentGame?.player1?.id || !currentGame?.player2?.id || !currentPlayer?.id) return;
+
+  isPlayer1 = currentGame.player1.id === currentPlayer.id;
+  opponentPlayer = isPlayer1 ? currentGame.player2 : currentGame.player1;
+
+  // links ist IMMER "Du"
+  setText('player1Name', currentPlayer.username);
+  if (currentPlayer.profileImageUrl) elements.player1Avatar.src = currentPlayer.profileImageUrl;
+
+  // rechts ist IMMER "Gegner"
+  setText('player2Name', opponentPlayer.username);
+  if (opponentPlayer.profileImageUrl) elements.player2Avatar.src = opponentPlayer.profileImageUrl;
+
+  // initiale Scores korrekt mappen (falls vorhanden)
+  const myScore = isPlayer1 ? currentGame.scorePlayer1 : currentGame.scorePlayer2;
+  const oppScore = isPlayer1 ? currentGame.scorePlayer2 : currentGame.scorePlayer1;
+
+  if (myScore != null) setText('player1Score', myScore);
+  if (oppScore != null) setText('player2Score', oppScore);
+}
+
+
+
 
   function addGameLog(message) {
     const div = document.createElement('div');
@@ -884,40 +1082,35 @@ function getLetterForAnswer(answerText) {
 }
 
 function animatePoints(points, isPlayer1 = true) {
-    const scoreElement = isPlayer1 ? elements.player1Score : elements.player2Score;
-    const originalScore = parseInt(scoreElement.textContent) || 0;
-    const newScore = originalScore + points;
+  const scoreElement = isPlayer1 ? elements.player1Score : elements.player2Score;
 
-    console.log(`💰 Animiere Punkte: ${originalScore} → ${newScore} (+${points})`);
+  // NICHT den Score neu berechnen – nur Animation
+  console.log(`💰 Animation: +${points}`);
 
-    // Direkte Aktualisierung für schnelles Feedback
-    scoreElement.textContent = newScore;
+  scoreElement.style.transition = 'all 0.3s ease';
+  scoreElement.style.transform = 'scale(1.3)';
+  scoreElement.style.color = points > 0 ? '#1cc88a' : '#e74a3b';
 
-    // Animationseffekt
-    scoreElement.style.transition = 'all 0.3s ease';
-    scoreElement.style.transform = 'scale(1.3)';
-    scoreElement.style.color = points > 0 ? '#1cc88a' : '#e74a3b';
-
-    setTimeout(() => {
-        scoreElement.style.transform = 'scale(1)';
-        scoreElement.style.color = '';
-    }, 300);
-
-    // Optional: Count-up Animation
-    if (points > 5) {
-        let current = originalScore;
-        const step = Math.max(1, Math.ceil(points / 20));
-
-        const interval = setInterval(() => {
-            current += step;
-            if (current >= newScore) {
-                current = newScore;
-                clearInterval(interval);
-            }
-            scoreElement.textContent = current;
-        }, 20);
-    }
+  setTimeout(() => {
+    scoreElement.style.transform = 'scale(1)';
+    scoreElement.style.color = '';
+  }, 300);
 }
+
+ function returnToLobby() {
+  localStorage.removeItem("currentGame");
+  localStorage.removeItem("autoJoinCategory");
+  location.href = "/lobby.html";
+}
+
+function playAgain() {
+  // ✅ Kategorie merken und Lobby automatisch wieder betreten
+  localStorage.removeItem("currentGame");
+  localStorage.setItem("autoJoinCategory", currentGame?.category || "sport");
+  location.href = "/lobby.html";
+}
+
+
 
 </script>
 

@@ -210,6 +210,32 @@
             text-transform: uppercase;
             letter-spacing: 1px;
         }
+
+        /* Leaderboard (Modal) - Rang-Zelle */
+#leaderboardTable td.rank-cell {
+  white-space: nowrap;
+}
+
+#leaderboardTable td.rank-cell .rank-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-width: 60px;       /* sorgt für gleiche Breite */
+}
+
+#leaderboardTable td.rank-cell .medal-slot {
+  display: inline-block;
+  width: 1.6em;          /* reserviert Platz für Medaille */
+  text-align: center;
+}
+
+#leaderboardTable td.rank-cell .rank-number {
+  display: inline-block;
+  min-width: 2ch;        /* 1- und 2-stellig stabil */
+  text-align: left;
+}
+
     </style>
 </head>
 <body class="bg-light">
@@ -433,7 +459,7 @@
                             <tr>
                                 <th width="80">Rang</th>
                                 <th>Spieler</th>
-                                <th class="text-center">Punkte</th>
+                                <th class="text-center">Highscore</th>
                                 <th class="text-center">Siege</th>
                                 <th class="text-center">Winrate</th>
                             </tr>
@@ -471,7 +497,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
                 <button type="button" class="btn btn-primary" onclick="refreshLeaderboard()">
-                    🔄 Aktualisieren
+                     Aktualisieren
                 </button>
             </div>
         </div>
@@ -491,10 +517,8 @@
                 <div class="row mb-4">
                     <div class="col-md-8">
                         <h5 id="statsPlayerName">-</h5>
-                        <p class="text-muted mb-0" id="statsMemberSince">Mitglied seit: -</p>
                     </div>
                     <div class="col-md-4 text-end">
-                        <div class="badge bg-primary fs-6" id="statsLevel">Level 1</div>
                     </div>
                 </div>
 
@@ -510,78 +534,34 @@
                 <div id="statsContent" class="d-none">
                     <!-- Gesamtstatistik -->
                     <div class="row mb-4">
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="stat-card text-center">
                                 <div class="stat-value" id="totalGames">0</div>
                                 <div class="stat-label">Gesamtspiele</div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+
+                        <div class="col-md-4">
                             <div class="stat-card text-center">
                                 <div class="stat-value" id="gamesWon">0</div>
                                 <div class="stat-label">Siege</div>
                             </div>
                         </div>
-                        <div class="col-md-3">
+
+                        <div class="col-md-4">
                             <div class="stat-card text-center">
                                 <div class="stat-value" id="winRate">0%</div>
                                 <div class="stat-label">Gewinnrate</div>
                             </div>
                         </div>
-                        <div class="col-md-3">
-                            <div class="stat-card text-center">
-                                <div class="stat-value" id="totalPoints">0</div>
-                                <div class="stat-label">Gesamtpunkte</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Kategorien-Statistik -->
-                    <h6 class="mb-3">📈 Performance nach Kategorie</h6>
-                    <div class="table-responsive mb-4">
-                        <table class="table table-sm">
-                            <thead>
-                            <tr>
-                                <th>Kategorie</th>
-                                <th class="text-center">Spiele</th>
-                                <th class="text-center">Siege</th>
-                                <th class="text-center">Punkte</th>
-                                <th class="text-center">Winrate</th>
-                            </tr>
-                            </thead>
-                            <tbody id="categoryStatsTable">
-                            <!-- Wird dynamisch gefüllt -->
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- Chart Platzhalter -->
-                    <div class="card mb-3">
-                        <div class="card-header">
-                            <h6 class="mb-0">📅 Aktivität der letzten 7 Tage</h6>
-                        </div>
-                        <div class="card-body">
-                            <div id="activityChartPlaceholder" class="text-center py-4" style="min-height: 200px;">
-                                <canvas id="activityChart"></canvas>
-                                <p class="text-muted mt-3">Keine Spieldaten verfügbar</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Erfolge/Badges -->
-                    <h6 class="mb-3">🏅 Meine Erfolge</h6>
-                    <div id="achievementsContainer" class="row g-2 mb-4">
-                        <!-- Wird dynamisch gefüllt -->
-                        <div class="col-12 text-center">
-                            <p class="text-muted">Noch keine Erfolge freigeschaltet</p>
-                        </div>
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
+
+                    <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Schließen</button>
                 <button type="button" class="btn btn-outline-primary" onclick="shareStats()">
-                    📤 Statistik teilen
+                     Statistik teilen
                 </button>
             </div>
         </div>
@@ -590,15 +570,15 @@
 
 <!-- Bootstrap JS Bundle -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<!-- Chart.js für Statistik-Charts -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+
 
 <script>
     /* ======================
        GLOBAL STATE & HELPERS
        ====================== */
 
-    let stompClient, currentPlayer, gameStartCountdown, activityChart;
+    let stompClient, currentPlayer, gameStartCountdown;
     let currentCategory = 'ALL';
     let isInLobby = false;
 
@@ -614,9 +594,9 @@
        ====================== */
 
     document.addEventListener('DOMContentLoaded', () => {
-        loadCurrentPlayer();
-        initEventListeners();
-        initModalEvents();
+      loadCurrentPlayer();
+      initEventListeners();
+      initModalEvents();
     });
 
     /* ======================
@@ -624,15 +604,16 @@
        ====================== */
 
     function initModalEvents() {
-        [
-            ['leaderboardModal', loadLeaderboard],
-            ['statsModal', loadPlayerStats]
-        ].forEach(([id, fn]) =>
-            $(id)?.addEventListener('show.bs.modal', fn)
-        );
+      // Leaderboard beim Öffnen laden
+      $('leaderboardModal')?.addEventListener('show.bs.modal', () => window.loadLeaderboard());
 
-        ['leaderboardTimeframe', 'leaderboardCategory']
-            .forEach(id => $(id)?.addEventListener('change', loadLeaderboard));
+      // Stats beim Öffnen laden (falls du die Funktion hast)
+      $('statsModal')?.addEventListener('show.bs.modal', () => loadPlayerStats?.());
+
+      // Filter ändern => neu laden
+      ['leaderboardTimeframe', 'leaderboardCategory'].forEach(id => {
+        $(id)?.addEventListener('change', () => window.loadLeaderboard());
+      });
     }
 
     /* ======================
@@ -640,19 +621,19 @@
        ====================== */
 
     function loadCurrentPlayer() {
-        currentPlayer = JSON.parse(localStorage.getItem('currentPlayer'));
+      currentPlayer = JSON.parse(localStorage.getItem('currentPlayer'));
 
-        if (!currentPlayer) {
-            currentPlayer = {
-                id: 1,
-                username: 'testPlayer1',
-                profileImageUrl: '/images/default-avatar.jpg'
-            };
-            localStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
-        }
+      if (!currentPlayer) {
+        currentPlayer = {
+          id: 1,
+          username: 'testPlayer1',
+          profileImageUrl: '/images/default-avatar.jpg'
+        };
+        localStorage.setItem('currentPlayer', JSON.stringify(currentPlayer));
+      }
 
-        setText('currentPlayerName', currentPlayer.username);
-        connectWebSocket();
+      setText('currentPlayerName', currentPlayer.username);
+      connectWebSocket();
     }
 
     /* ======================
@@ -660,56 +641,63 @@
        ====================== */
 
     function connectWebSocket() {
-        if (!SockJS || !Stomp) {
-            showNotification('❌ WebSocket nicht verfügbar');
-            return setTimeout(connectWebSocket, 3000);
+      if (!window.SockJS || !window.Stomp) {
+        showNotification('❌ WebSocket nicht verfügbar');
+        return setTimeout(connectWebSocket, 3000);
+      }
+
+      stompClient = Stomp.over(new SockJS('/ws'));
+      stompClient.debug = null;
+
+      stompClient.connect(
+        { login: currentPlayer.username, passcode: 'nopassword' },
+        () => {
+          setupSubscriptions();
+          $('joinLobbyBtn').disabled = false;
+          setText('joinLobbyBtn', 'Lobby betreten');
+        },
+        () => {
+          $('joinLobbyBtn').disabled = true;
+          setText('joinLobbyBtn', 'Verbindung fehlgeschlagen');
+          setTimeout(connectWebSocket, 5000);
         }
-
-        stompClient = Stomp.over(new SockJS('/ws'));
-        stompClient.debug = null;
-
-        stompClient.connect(
-            { login: currentPlayer.username, passcode: 'nopassword' },
-            () => {
-                setupSubscriptions();
-                $('joinLobbyBtn').disabled = false;
-                setText('joinLobbyBtn', 'Lobby betreten');
-            },
-            () => {
-                $('joinLobbyBtn').disabled = true;
-                setText('joinLobbyBtn', 'Verbindung fehlgeschlagen');
-                setTimeout(connectWebSocket, 5000);
-            }
-        );
+      );
     }
 
     function resubscribe(ref, topic, handler) {
-        ref?.unsubscribe();
-        return stompClient.subscribe(topic, msg =>
-            handler(JSON.parse(msg.body))
-        );
+      ref?.unsubscribe();
+      return stompClient.subscribe(topic, msg => handler(JSON.parse(msg.body)));
     }
 
     function setupSubscriptions() {
-        const cat = currentCategory === 'ALL' ? 'DEFAULT' : currentCategory;
+      const cat = currentCategory === 'ALL' ? 'DEFAULT' : currentCategory;
 
-        subscriptions.lobby = resubscribe(
-            subscriptions.lobby,
-            `/topic/lobby/${cat}`,
-            handleLobbyUpdate
-        );
+      subscriptions.lobby = resubscribe(
+        subscriptions.lobby,
+        `/topic/lobby/${cat}`,
+        handleLobbyUpdate
+      );
 
-        subscriptions.match = resubscribe(
-            subscriptions.match,
-            `/topic/game/match/player/${currentPlayer.id}`,
-            handleGameMatch
-        );
+      subscriptions.match = resubscribe(
+        subscriptions.match,
+        `/topic/game/match/player/${currentPlayer.id}`,
+        handleGameMatch
+      );
 
-        subscriptions.status = resubscribe(
-            subscriptions.status,
-            '/user/queue/lobby.status',
-            updateLobbyStatus
-        );
+      subscriptions.status = resubscribe(
+        subscriptions.status,
+        '/user/queue/lobby.status',
+        updateLobbyStatus
+      );
+
+      // ✅ Auto-Join (Nochmal spielen)
+      const autoCat = localStorage.getItem("autoJoinCategory");
+      if (autoCat) {
+        $('categorySelect').value = autoCat;
+        currentCategory = autoCat;
+        localStorage.removeItem("autoJoinCategory");
+        joinLobby();
+      }
     }
 
     /* ======================
@@ -717,16 +705,14 @@
        ====================== */
 
     function initEventListeners() {
-        [
-            ['joinLobbyBtn', joinLobby],
-            ['leaveLobbyBtn', leaveLobby],
-            ['logoutBtn', logout],
-            ['helpBtn', showHelp]
-        ].forEach(([id, fn]) =>
-            $(id)?.addEventListener('click', fn)
-        );
+      [
+        ['joinLobbyBtn', joinLobby],
+        ['leaveLobbyBtn', leaveLobby],
+        ['logoutBtn', logout],
+        ['helpBtn', showHelp]
+      ].forEach(([id, fn]) => $(id)?.addEventListener('click', fn));
 
-        $('categorySelect')?.addEventListener('change', handleCategoryChange);
+      $('categorySelect')?.addEventListener('change', handleCategoryChange);
     }
 
     /* ======================
@@ -734,58 +720,59 @@
        ====================== */
 
     function handleCategoryChange() {
-        const next = $('categorySelect').value;
-        if (isInLobby && next !== currentCategory) {
-            leaveLobby();
-            setTimeout(() => {
-                currentCategory = next;
-                joinLobby();
-            }, 300);
-        } else {
-            currentCategory = next;
-        }
+      const next = $('categorySelect').value;
+
+      if (isInLobby && next !== currentCategory) {
+        leaveLobby();
+        setTimeout(() => {
+          currentCategory = next;
+          joinLobby();
+        }, 300);
+      } else {
+        currentCategory = next;
+      }
     }
 
     function joinLobby() {
-        if (!stompClient?.connected || !currentPlayer?.id) return;
+      if (!stompClient?.connected || !currentPlayer?.id) return;
 
-        hide('joinLobbyBtn');
-        show('leaveLobbyBtn');
-        $('categorySelect').disabled = true;
-        show('queueInfo');
-        show('livePlayersContainer');
+      hide('joinLobbyBtn');
+      show('leaveLobbyBtn');
+      $('categorySelect').disabled = true;
+      show('queueInfo');
+      show('livePlayersContainer');
 
-        stompClient.send('/app/game.join', {}, JSON.stringify({
-            playerId: currentPlayer.id,
-            username: currentPlayer.username,
-            category: $('categorySelect').value
-        }));
+      stompClient.send('/app/game.join', {}, JSON.stringify({
+        playerId: currentPlayer.id,
+        username: currentPlayer.username,
+        category: $('categorySelect').value
+      }));
 
-        isInLobby = true;
-        updateLobbyStatus({ status: 'WAITING', message: 'Suche Gegner...' });
+      isInLobby = true;
+      updateLobbyStatus({ status: 'WAITING', message: 'Suche Gegner...' });
     }
 
     function leaveLobby() {
-        if (stompClient?.connected && isInLobby) {
-            stompClient.send('/app/game.leave', {}, JSON.stringify({
-                playerId: currentPlayer.id,
-                category: currentCategory
-            }));
-        }
-        resetLobbyUI();
+      if (stompClient?.connected && isInLobby) {
+        stompClient.send('/app/game.leave', {}, JSON.stringify({
+          playerId: currentPlayer.id,
+          category: currentCategory
+        }));
+      }
+      resetLobbyUI();
     }
 
     function resetLobbyUI() {
-        isInLobby = false;
-        show('joinLobbyBtn');
-        hide('leaveLobbyBtn');
-        $('categorySelect').disabled = false;
-        hide('queueInfo');
-        hide('livePlayersContainer');
-        hide('matchInfo');
+      isInLobby = false;
+      show('joinLobbyBtn');
+      hide('leaveLobbyBtn');
+      $('categorySelect').disabled = false;
+      hide('queueInfo');
+      hide('livePlayersContainer');
+      hide('matchInfo');
 
-        updateLobbyStatus({ status: 'IDLE' });
-        gameStartCountdown && clearInterval(gameStartCountdown);
+      updateLobbyStatus({ status: 'IDLE' });
+      if (gameStartCountdown) clearInterval(gameStartCountdown);
     }
 
     /* ======================
@@ -793,24 +780,28 @@
        ====================== */
 
     function handleLobbyUpdate(u) {
-        setText('playerCount', u.playerCount || 0);
-        setText('livePlayerCount', u.playerCount || 0);
+      setText('playerCount', u.playerCount || 0);
+      setText('livePlayerCount', u.playerCount || 0);
+
+      // Nur wenn du diese Funktion wirklich hast
+      if (typeof updateLivePlayersDisplay === "function") {
         updateLivePlayersDisplay(u);
+      }
     }
 
     function updateLobbyStatus(s) {
-        const el = $('lobbyStatus');
-        if (!el) return;
+      const el = $('lobbyStatus');
+      if (!el) return;
 
-        const map = {
-            WAITING: ['status-waiting', '⏳ Warteschlange'],
-            MATCHED: ['status-matched', '✅ Gegner gefunden'],
-            ERROR: ['alert-danger', '❌ Fehler']
-        };
+      const map = {
+        WAITING: ['status-waiting', '⏳ Warteschlange'],
+        MATCHED: ['status-matched', '✅ Gegner gefunden'],
+        ERROR: ['alert-danger', '❌ Fehler']
+      };
 
-        const [cls, title] = map[s.status] || ['alert-secondary', '👥 Lobby'];
-        el.className = `alert ${cls} text-center`;
-        el.innerHTML = `<h5>${title}</h5><p>${s.message || ''}</p>`;
+      const [cls, title] = map[s.status] || ['alert-secondary', '👥 Lobby'];
+      el.className = `alert ${cls} text-center`;
+      el.innerHTML = `<h5>${title}</h5><p>${s.message || ''}</p>`;
     }
 
     /* ======================
@@ -818,42 +809,42 @@
        ====================== */
 
     function handleGameMatch(match) {
-        if (!match?.opponent) return;
+      if (!match?.opponent) return;
 
-        show('matchInfo');
-        hide('queueInfo');
-        hide('livePlayersContainer');
+      show('matchInfo');
+      hide('queueInfo');
+      hide('livePlayersContainer');
 
-        $('opponentInfo').innerHTML = `
-            <div class="text-center">
-                <img class="player-avatar mb-2"
-                     src="${match.opponent.profileImageUrl || ''}">
-                <h5>${match.opponent.username}</h5>
-            </div>
-        `;
+      $('opponentInfo').innerHTML = `
+        <div class="text-center">
+          <img class="player-avatar mb-2" src="${match.opponent.profileImageUrl || ''}">
+          <h5>${match.opponent.username}</h5>
+        </div>
+      `;
 
-        startCountdown(5, () => startGame(match));
+      startCountdown(5, () => startGame(match));
     }
 
     function startCountdown(seconds, done) {
-        let t = seconds;
-        setText('countdown', t);
-        $('countdownProgress').style.width = '100%';
+      let t = seconds;
+      setText('countdown', t);
+      $('countdownProgress').style.width = '100%';
 
-        gameStartCountdown = setInterval(() => {
-            t--;
-            setText('countdown', t);
-            $('countdownProgress').style.width = `${t / seconds * 100}%`;
-            if (t <= 0) {
-                clearInterval(gameStartCountdown);
-                done();
-            }
-        }, 1000);
+      gameStartCountdown = setInterval(() => {
+        t--;
+        setText('countdown', t);
+        $('countdownProgress').style.width = `${(t / seconds) * 100}%`;
+
+        if (t <= 0) {
+          clearInterval(gameStartCountdown);
+          done();
+        }
+      }, 1000);
     }
 
     function startGame(game) {
-        localStorage.setItem('currentGame', JSON.stringify(game));
-        location.href = `/game.html?gameId=${game.gameId}`;
+      localStorage.setItem('currentGame', JSON.stringify(game));
+      location.href = `/game.html?gameId=${game.gameId}`;
     }
 
     /* ======================
@@ -861,15 +852,15 @@
        ====================== */
 
     function showNotification(msg) {
-        const box = document.createElement('div');
-        box.className = 'alert alert-info fade show';
-        box.innerHTML = `${msg}<button class="btn-close" onclick="this.parentElement.remove()"></button>`;
-        $('notificationContainer')?.appendChild(box);
-        setTimeout(() => box.remove(), 3000);
+      const box = document.createElement('div');
+      box.className = 'alert alert-info fade show';
+      box.innerHTML = `${msg}<button class="btn-close" onclick="this.parentElement.remove()"></button>`;
+      $('notificationContainer')?.appendChild(box);
+      setTimeout(() => box.remove(), 3000);
     }
 
     function showHelp() {
-        new bootstrap.Modal($('helpModal')).show();
+      new bootstrap.Modal($('helpModal')).show();
     }
 
     /* ======================
@@ -877,12 +868,256 @@
        ====================== */
 
     function logout() {
-        Object.values(subscriptions).forEach(s => s?.unsubscribe());
-        stompClient?.disconnect();
-        localStorage.clear();
-        location.href = '/index.html';
+      Object.values(subscriptions).forEach(s => s?.unsubscribe());
+      stompClient?.disconnect();
+      localStorage.clear();
+      location.href = '/index.html';
     }
+
+    /* ======================
+       LEADERBOARD (Modal)
+       ====================== */
+
+    // ✅ Damit der Button im Modal funktioniert
+    window.refreshLeaderboard = function refreshLeaderboard() {
+      window.loadLeaderboard();
+    };
+
+    window.loadLeaderboard = function loadLeaderboard() {
+      const loading = $('leaderboardLoading');
+      const content = $('leaderboardContent');
+      const tableBody = $('leaderboardTable');
+
+      // Hard-guards
+      if (!loading || !content || !tableBody) {
+        console.error("❌ Leaderboard DOM fehlt. Erwartet: #leaderboardLoading, #leaderboardContent, #leaderboardTable");
+        return;
+      }
+
+      // UI: Loading an
+      content.classList.add('d-none');
+      loading.classList.remove('d-none');
+      tableBody.innerHTML = '';
+
+      // Filter lesen
+      const timeframe = $('leaderboardTimeframe')?.value || 'alltime';
+      const category = $('leaderboardCategory')?.value || 'ALL';
+
+      // Wenn dein Backend Filter (noch) nicht unterstützt, ist das ok.
+      // Du kannst später Query-Params einführen.
+      const url = `/api/stats/leaderboard?timeframe=${encodeURIComponent(timeframe)}&category=${encodeURIComponent(category)}`;
+
+      fetch(url, { cache: 'no-store' })
+        .then(async (res) => {
+          if (!res.ok) {
+            const txt = await res.text().catch(() => "");
+            throw new Error(`HTTP ${res.status} ${txt ? "- " + txt : ""}`);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          window.renderLeaderboard(data);
+          loading.classList.add('d-none');
+          content.classList.remove('d-none');
+        })
+        .catch((err) => {
+          console.error("❌ loadLeaderboard Fehler:", err);
+          loading.classList.add('d-none');
+          content.classList.remove('d-none');
+
+          tableBody.innerHTML = `
+            <tr>
+              <td colspan="5">
+                <div class="alert alert-danger mb-0">
+                  <strong>❌ Fehler:</strong> Rangliste konnte nicht geladen werden.<br>
+                  <small class="text-muted">${String(err.message || err)}</small>
+                </div>
+              </td>
+            </tr>
+          `;
+        });
+    };
+
+    window.renderLeaderboard = function renderLeaderboard(leaderboard) {
+  const tableBody = $('leaderboardTable');
+  const posCard = $('currentPlayerPosition');
+  const rankBadge = $('playerRankBadge');
+  const rankName = $('playerRankName');
+  const rankPoints = $('playerRankPoints');
+  const rankProgress = $('rankProgress');
+
+  if (!tableBody) return;
+
+  if (!Array.isArray(leaderboard) || leaderboard.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="5" class="text-center text-muted py-4">
+          🏆 Noch keine Rangliste – spiele dein erstes Spiel!
+        </td>
+      </tr>
+    `;
+    if (posCard) posCard.classList.add('d-none');
+    return;
+  }
+
+  const normalized = leaderboard.map((entry, idx) => {
+    const playerId = entry.playerId ?? entry.id ?? entry.player?.id;
+    const username = entry.username ?? entry.playerName ?? entry.player?.username ?? 'Unbekannt';
+    const totalGames = entry.totalGames ?? entry.gamesPlayed ?? 0;
+    const gamesWon = entry.gamesWon ?? entry.wins ?? entry.totalWins ?? 0;
+
+    // Punkte: falls Backend noch keine Punkte liefert, bleibt 0
+    const highscore = entry.highscore ?? 0;
+
+
+    const winRate = entry.winRate ?? (totalGames > 0 ? Math.round((gamesWon / totalGames) * 100) : 0);
+    const rank = entry.rank ?? (idx + 1);
+
+    return { playerId, username, totalGames, gamesWon, highscore, winRate, rank };
+  });
+
+  tableBody.innerHTML = normalized.map(p => {
+    const isMe = currentPlayer?.id && p.playerId === currentPlayer.id;
+
+    const medal =
+      p.rank === 1 ? '🥇' :
+      p.rank === 2 ? '🥈' :
+      p.rank === 3 ? '🥉' : '';
+
+    return `
+      <tr class="${isMe ? 'table-info' : ''}">
+        <td class="rank-cell">
+          <span class="rank-wrap">
+            <span class="medal-slot">${medal}</span>
+            <strong class="rank-number">${p.rank}</strong>
+          </span>
+        </td>
+
+        <td>
+          ${p.username}
+          ${isMe ? '<span class="badge bg-primary ms-2">Du</span>' : ''}
+        </td>
+
+        <td class="text-center">${p.highscore}</td>
+        <td class="text-center">${p.gamesWon}</td>
+        <td class="text-center">${p.winRate}%</td>
+      </tr>
+    `;
+  }).join('');
+
+  // "Deine Position" Card
+  const me = normalized.find(p => currentPlayer?.id && p.playerId === currentPlayer.id);
+  if (!posCard) return;
+
+  if (!me) {
+    posCard.classList.add('d-none');
+    return;
+  }
+
+  posCard.classList.remove('d-none');
+
+  if (rankBadge) rankBadge.textContent = `#${me.rank}`;
+  if (rankName) rankName.textContent = me.username;
+
+  if (rankPoints) rankPoints.textContent = `${me.highscore} Punkte`;
+
+const best = normalized[0]?.highscore ?? 0;
+const pct = best > 0 ? Math.min(100, Math.round((me.highscore / best) * 100)) : 0;
+if (rankProgress) rankProgress.style.width = `${pct}%`;
+
+};
+
+   /* ======================
+   STATS (Modal)
+   ====================== */
+window.loadPlayerStats = loadPlayerStats;
+window.shareStats = shareStats;
+
+async function loadPlayerStats() {
+  const loading = $('statsLoading');
+  const content = $('statsContent');
+
+  const nameEl = $('statsPlayerName');
+  const totalGamesEl = $('totalGames');
+  const gamesWonEl = $('gamesWon');
+  const winRateEl = $('winRate');
+
+
+  if (!loading || !content) return;
+  if (!currentPlayer?.id) return;
+
+  content.classList.add('d-none');
+  loading.classList.remove('d-none');
+
+  try {
+    const url = `/api/players/${currentPlayer.id}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+
+    const username = data.username ?? currentPlayer.username ?? '-';
+    const totalGames = Number(data.totalGames ?? 0);
+    const gamesWon = Number(data.gamesWon ?? 0);
+    const highscore = Number(data.highscore ?? 0);
+    const winRate = totalGames > 0 ? (gamesWon / totalGames) * 100 : 0;
+
+    if (nameEl) nameEl.textContent = username;
+    if (totalGamesEl) totalGamesEl.textContent = String(totalGames);
+    if (gamesWonEl) gamesWonEl.textContent = String(gamesWon);
+    if (winRateEl) winRateEl.textContent = `${round1(winRate)}%`;
+
+
+  } catch (err) {
+    console.error("❌ loadPlayerStats Fehler:", err);
+  } finally {
+    loading.classList.add('d-none');
+    content.classList.remove('d-none');
+  }
+}
+
+
+function shareStats() {
+  const username = currentPlayer?.username ?? 'Ich';
+  const tg = $('totalGames')?.textContent ?? '0';
+  const gw = $('gamesWon')?.textContent ?? '0';
+  const wr = $('winRate')?.textContent ?? '0%';
+
+const text = `📊 Statistik von ${username}\nSpiele: ${tg}\nSiege: ${gw}\nWinrate: ${wr}`;
+
+  navigator.clipboard?.writeText(text)
+    .then(() => showNotification?.("✅ Statistik kopiert!"))
+    .catch(() => alert(text));
+}
+
+function round1(n) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return 0;
+  return Math.round(x * 10) / 10;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+
+
+
+
+
+
+/* ===== Helpers ===== */
+
+
+
 </script>
+
+
 
 </body>
 </html>

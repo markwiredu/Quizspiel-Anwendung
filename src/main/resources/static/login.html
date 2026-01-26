@@ -171,43 +171,49 @@
   }
 
   // Login verarbeiten
-  document.getElementById('loginForm').addEventListener('submit', function(event) {
-      event.preventDefault();
+  document.getElementById('loginForm').addEventListener('submit', async function(event) {
+  event.preventDefault();
 
-      const password = document.getElementById('password').value;
-      const errorDiv = document.getElementById('errorMessage');
-      const successDiv = document.getElementById('successMessage');
+  const password = document.getElementById('password').value;
+  const errorDiv = document.getElementById('errorMessage');
+  const successDiv = document.getElementById('successMessage');
 
-      // Fehler-Meldungen verstecken
-      errorDiv.classList.add('d-none');
-      successDiv.classList.add('d-none');
+  errorDiv.classList.add('d-none');
+  successDiv.classList.add('d-none');
 
-      if (!selectedPlayer) {
-          showError('Bitte einen Spieler auswählen');
-          return;
-      }
+  if (!selectedPlayer) return showError('Bitte einen Spieler auswählen');
+  if (!password) return showError('Bitte Passwort eingeben');
 
-      if (!password) {
-          showError('Bitte Passwort eingeben');
-          return;
-      }
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        playerId: selectedPlayer.id,
+        password: password
+      })
+    });
 
-      // Einfache Passwort-Prüfung (in Produktion mit Hash!)
-      if (password === 'test123') { // Standard-Passwort für Demo
-          // Erfolg - Spieler im localStorage speichern
-          localStorage.setItem('currentPlayer', JSON.stringify(selectedPlayer));
+    if (!res.ok) {
+      if (res.status === 401) return showError('❌ Falsches Passwort');
+      return showError(`❌ Login fehlgeschlagen (HTTP ${res.status})`);
+    }
 
-          showSuccess('✅ Erfolgreich angemeldet!');
+    const player = await res.json();
 
-          // Weiterleitung nach 1 Sekunde
-          setTimeout(() => {
-              window.location.href = '/lobby.html';
-          }, 1000);
+    // ✅ aktuellen Spieler speichern (vom Backend, nicht aus Liste)
+    localStorage.setItem('currentPlayer', JSON.stringify(player));
 
-      } else {
-          showError('❌ Falsches Passwort! Versuche "test123" für Demo');
-      }
-  });
+    showSuccess('✅ Erfolgreich angemeldet!');
+    setTimeout(() => window.location.href = '/lobby.html', 700);
+
+  } catch (e) {
+    console.error(e);
+    showError('❌ Server nicht erreichbar');
+  }
+});
+
+
 
   // Hilfsfunktionen
   function showError(message) {

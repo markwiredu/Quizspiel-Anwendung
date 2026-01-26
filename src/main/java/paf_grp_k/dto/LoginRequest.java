@@ -1,10 +1,9 @@
 package paf_grp_k.dto;
 
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
-@Getter @Setter
+@Data
 public class LoginRequest {
-    private String username;
+    private Long playerId;
     private String password;
 }

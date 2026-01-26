@@ -56,7 +56,7 @@
           <img id="profilePreview" src="/images/default-avatar.jpg" class="profile-preview mb-2"
                alt="Profilbild Vorschau">
           <p class="mb-1">Klicken zum Hochladen oder Bild hierher ziehen</p>
-          <small class="text-muted">Max. 2MB (JPG, PNG, GIF)</small>
+          <small class="text-muted">Max. 10MB (JPG, PNG, GIF)</small>
           <input type="file" id="profileImage" accept="image/*" class="d-none">
         </div>
         <input type="hidden" id="profileImageUrl" value="/images/default-avatar.jpg">
@@ -130,8 +130,8 @@
       }
 
       // Dateigröße prüfen (2MB)
-      if (file.size > 2 * 1024 * 1024) {
-          showError('Datei zu groß! Maximal 2MB erlaubt.');
+      if (file.size > 10 * 1024 * 1024) {
+          showError('Datei zu groß! Maximal 10MB erlaubt.');
           return;
       }
 
@@ -152,24 +152,25 @@
       formData.append('file', file);
 
       fetch('/api/upload/profile-image', {
-          method: 'POST',
-          body: formData
-      })
-      .then(response => {
-          if (!response.ok) {
-              throw new Error('Upload fehlgeschlagen');
-          }
-          return response.text();
-      })
-      .then(fileUrl => {
-          profileImageUrl.value = fileUrl;
-          showSuccess('Profilbild erfolgreich hochgeladen!');
-      })
-      .catch(error => {
-          showError('Upload fehlgeschlagen: ' + error.message);
-          // Fallback: Default-Bild verwenden
-          profileImageUrl.value = '/images/default-avatar.jpg';
-      });
+  method: 'POST',
+  body: formData
+})
+.then(async (response) => {
+  const text = await response.text().catch(() => '');
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} - ${text || 'Upload fehlgeschlagen'}`);
+  }
+  return text;
+})
+.then(fileUrl => {
+  profileImageUrl.value = fileUrl;
+  showSuccess('Profilbild erfolgreich hochgeladen!');
+})
+.catch(error => {
+  showError('Upload fehlgeschlagen: ' + error.message);
+  profileImageUrl.value = '/images/default-avatar.jpg';
+});
+
   }
 
   // Registrierung verarbeiten

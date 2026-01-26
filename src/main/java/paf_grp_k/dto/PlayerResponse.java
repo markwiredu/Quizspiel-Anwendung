@@ -13,4 +13,6 @@ public class PlayerResponse {
     private int gamesWon;
     private int gamesLost;
     private int highscore;
+
+
 }

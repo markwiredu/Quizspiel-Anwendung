@@ -62,7 +62,7 @@ public class Player {
      */
     private int highscore = 0;
 
-
+    private int totalPoints;
 
 
 }

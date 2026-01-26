@@ -29,7 +29,7 @@ public class LobbyService {
         log.info("🚪 Spieler {} versucht Lobby {} (key: {}) zu betreten. Aktuell in Lobby: {}",
                 playerId, category, lobbyKey, playersInAnyLobby.contains(playerId));
 
-        // Verhindere doppelten Lobby-Beitritt
+        // Verhindere doppelten Lobby-Beitritt (in irgendeiner Lobby)
         if (playersInAnyLobby.contains(playerId)) {
             log.warn("⚠️ Spieler {} ist bereits in einer Lobby", playerId);
             return LobbyStatusDTO.alreadyInLobby(category);
@@ -43,6 +43,21 @@ public class LobbyService {
             lobbyQueues.putIfAbsent(lobbyKey, new ConcurrentLinkedQueue<>());
             ConcurrentLinkedQueue<Long> queue = lobbyQueues.get(lobbyKey);
 
+            // ✅ HARTE DEDUPE: Spieler darf nicht doppelt in der Queue sein
+            if (queue.contains(playerId)) {
+                log.warn("⚠️ Spieler {} ist bereits in der Queue der Lobby {}", playerId, category);
+
+                // Zustand geradeziehen (falls playersInAnyLobby wegen Race/Reload nicht gesetzt war)
+                playersInAnyLobby.add(playerId);
+                playerStatus.put(playerId, "WAITING_IN_LOBBY_" + category);
+
+                int position = getPositionInQueue(playerId, queue);
+                int total = queue.size();
+
+                return LobbyStatusDTO.waiting(position, total, category);
+            }
+
+            // ✅ normaler Beitritt
             queue.add(playerId);
             playersInAnyLobby.add(playerId);
             playerStatus.put(playerId, "WAITING_IN_LOBBY_" + category);
@@ -54,8 +69,9 @@ public class LobbyService {
                     playerId, category, position, total, queue);
 
             return LobbyStatusDTO.waiting(position, total, category);
+
         } catch (Exception e) {
-            log.error("❌ Fehler beim Beitritt für Spieler {}: {}", playerId, e.getMessage());
+            log.error("❌ Fehler beim Beitritt für Spieler {}: {}", playerId, e.getMessage(), e);
             return LobbyStatusDTO.error("Fehler beim Beitritt: " + e.getMessage());
         } finally {
             lock.unlock();
@@ -80,10 +96,30 @@ public class LobbyService {
                 return Optional.empty();
             }
 
-            // Spieler nur ansehen, nicht entfernen
             Iterator<Long> iterator = queue.iterator();
             Long player1Id = iterator.next();
-            Long player2Id = iterator.next();
+
+            // ✅ finde den ersten ANDEREN Spieler als Gegner
+            Long player2Id = null;
+            while (iterator.hasNext()) {
+                Long candidate = iterator.next();
+                if (!candidate.equals(player1Id)) {
+                    player2Id = candidate;
+                    break;
+                }
+            }
+
+            // Wenn nur doppelte IDs drin sind (z.B. [1,1]), kein Match erzeugen
+            if (player2Id == null) {
+                log.warn("⚠️ Kein gültiger Gegner gefunden (nur gleiche IDs) in Lobby {}: {}", category, queue);
+                return Optional.empty();
+            }
+
+            // ✅ Self-Match blocken (zusätzlicher Schutz)
+            if (player1Id.equals(player2Id)) {
+                log.error("❌ SELF-MATCH BLOCKED: {} vs {} in {}", player1Id, player2Id, category);
+                return Optional.empty();
+            }
 
             log.info("🔍 Prüfe Match für {} vs {} in Kategorie {}",
                     player1Id, player2Id, category);
@@ -104,10 +140,12 @@ public class LobbyService {
                     player1Id, player2Id, category);
 
             return Optional.of(new MatchResult(player1Id, player2Id, category));
+
         } finally {
             lock.unlock();
         }
     }
+
 
     // Methode: Spieler nach erfolgreichem Match entfernen
     public void removePlayersAfterMatch(Long player1Id, Long player2Id, String category) {

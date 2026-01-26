@@ -39,24 +39,25 @@ public class PlayerController {
      * @param request Daten des anzulegenden Spielers
      * @return HTTP-200 mit Spielerinformationen oder HTTP-400 bei Fehlern
      */
+
     @PostMapping
-    public ResponseEntity<PlayerResponse> createPlayer(@RequestBody CreatePlayerRequest request) {
-        // Prüfen ob Username bereits existiert
-        if (playerRepository.findByUsername(request.getUsername()).isPresent()) {
-            return ResponseEntity.badRequest().build();
+    public ResponseEntity<?> createPlayer(@RequestBody CreatePlayerRequest request) {
+
+        if (request.getPassword() == null || request.getPassword().length() < 8) {
+            return ResponseEntity.badRequest().body("Passwort muss mindestens 8 Zeichen haben.");
         }
 
-        // Neuen Spieler erstellen
+        if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body("Username darf nicht leer sein.");
+        }
+
+        if (playerRepository.findByUsername(request.getUsername()).isPresent()) {
+            return ResponseEntity.badRequest().body("Username ist bereits vergeben.");
+        }
+
         Player player = new Player();
         player.setUsername(request.getUsername());
-        /*player.setPasswordHash(request.getPassword()); // In echten Applikationen hashen!
-        Ersetzen durch:
-         */
-        // Passwort wird hier sicher gehasht gespeichert (kein Klartext!)
-        player.setPasswordHash(
-                passwordEncoder.encode(request.getPassword())
-        );
-
+        player.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         player.setProfileImageUrl(request.getProfileImageUrl());
         player.setTotalGames(0);
         player.setGamesWon(0);
@@ -65,7 +66,6 @@ public class PlayerController {
 
         Player savedPlayer = playerRepository.save(player);
 
-        // Response erstellen
         PlayerResponse response = new PlayerResponse();
         response.setId(savedPlayer.getId());
         response.setUsername(savedPlayer.getUsername());
@@ -77,6 +77,7 @@ public class PlayerController {
 
         return ResponseEntity.ok(response);
     }
+
 
     /**
      * Ruft alle Spieler aus der Datenbank ab.

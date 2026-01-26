@@ -25,6 +25,15 @@ public class GameService {
     private final RoundRepository roundRepository;
 
     public Game createGame(Long player1Id, Long player2Id, String category) {
+
+        if (player1Id == null || player2Id == null) {
+            throw new IllegalArgumentException("player ids must not be null");
+        }
+
+        if (player1Id.equals(player2Id)) {
+            throw new IllegalArgumentException("SELF_MATCH blocked: player1Id == player2Id == " + player1Id);
+        }
+
         Player player1 = playerRepository.findById(player1Id)
                 .orElseThrow(() -> new RuntimeException("Player 1 not found"));
         Player player2 = playerRepository.findById(player2Id)
@@ -118,10 +127,7 @@ public class GameService {
 
         roundRepository.save(round);
 
-        // Wenn beide geantwortet haben, Punkte berechnen
-        if (round.getAnswerPlayer1() != null && round.getAnswerPlayer2() != null) {
-            calculateRoundPoints(round);
-        }
+
     }
 
     /**
@@ -130,21 +136,15 @@ public class GameService {
     public void calculateRoundPoints(Round round) {
         String correctAnswer = round.getQuestion().getCorrectAnswer();
 
-        int points1 = correctAnswer.equals(round.getAnswerPlayer1()) ? 10 : 0;
-        int points2 = correctAnswer.equals(round.getAnswerPlayer2()) ? 10 : 0;
+        int points1 = correctAnswer.equalsIgnoreCase(round.getAnswerPlayer1()) ? 10 : 0;
+        int points2 = correctAnswer.equalsIgnoreCase(round.getAnswerPlayer2()) ? 10 : 0;
 
         round.setPointsPlayer1(points1);
         round.setPointsPlayer2(points2);
         round.setEndTime(LocalDateTime.now());
-
-        // Punkte zum Spiel-Score hinzufügen
-        Game game = round.getGame();
-        game.setScorePlayer1(game.getScorePlayer1() + points1);
-        game.setScorePlayer2(game.getScorePlayer2() + points2);
-
-        gameRepository.save(game);
         roundRepository.save(round);
     }
+
 
     public void updateRoundPoints(Long roundId, int pointsPlayer1, int pointsPlayer2) {
         Round round = roundRepository.findById(roundId)
@@ -196,33 +196,28 @@ public class GameService {
         Player player1 = game.getPlayer1();
         Player player2 = game.getPlayer2();
 
-        // Gesamtspiele erhöhen
         player1.setTotalGames(player1.getTotalGames() + 1);
         player2.setTotalGames(player2.getTotalGames() + 1);
 
-        // Gewinner/Verlierer aktualisieren
         if (game.getWinner() != null) {
             if (game.getWinner().getId().equals(player1.getId())) {
                 player1.setGamesWon(player1.getGamesWon() + 1);
                 player2.setGamesLost(player2.getGamesLost() + 1);
-                log.info("📊 Spieler {} gewinnt gegen {}", player1.getUsername(), player2.getUsername());
             } else {
                 player2.setGamesWon(player2.getGamesWon() + 1);
                 player1.setGamesLost(player1.getGamesLost() + 1);
-                log.info("📊 Spieler {} gewinnt gegen {}", player2.getUsername(), player1.getUsername());
             }
-        } else {
-            log.info("📊 Unentschieden zwischen {} und {}", player1.getUsername(), player2.getUsername());
         }
 
-        // Spieler speichern
+        // ✅ HIER EINFÜGEN
+        int p1Score = game.getScorePlayer1();
+        int p2Score = game.getScorePlayer2();
+
+        player1.setHighscore(Math.max(player1.getHighscore(), p1Score));
+        player2.setHighscore(Math.max(player2.getHighscore(), p2Score));
+
         playerRepository.save(player1);
         playerRepository.save(player2);
-
-        log.info("✅ Statistiken aktualisiert für Spiel {}: {} (S:{} V:{}) vs {} (S:{} V:{})",
-                game.getId(),
-                player1.getUsername(), player1.getGamesWon(), player1.getGamesLost(),
-                player2.getUsername(), player2.getGamesWon(), player2.getGamesLost());
     }
 
     public List<Game> getPlayerGames(Long playerId) {
@@ -242,5 +237,13 @@ public class GameService {
 
         // Spiele abrufen
         return gameRepository.findByPlayer1IdOrPlayer2Id(playerId, playerId);
+    }
+
+    @Transactional
+    public Game addScores(Long gameId, int p1Points, int p2Points) {
+        Game game = getGameById(gameId); // lädt DB-Stand
+        game.setScorePlayer1(game.getScorePlayer1() + p1Points);
+        game.setScorePlayer2(game.getScorePlayer2() + p2Points);
+        return gameRepository.save(game);
     }
 }
