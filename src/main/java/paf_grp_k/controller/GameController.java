@@ -1,24 +1,41 @@
 package paf_grp_k.controller;
 
 import paf_grp_k.model.Game;
+import paf_grp_k.model.Round;
 import paf_grp_k.service.GameService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+/**
+ * REST-Controller zur Abfrage spielbezogener Daten.
+ *
+ * <p>Diese Klasse stellt Endpunkte zur Verfügung, um Spiele, Runden
+ * und spielerbezogene Spielinformationen abzurufen. Die eigentliche
+ * Geschäftslogik ist im {@link GameService} gekapselt.</p>
+ *
+ * <p>Der Controller dient ausschließlich als Schnittstelle zwischen
+ * HTTP-Anfragen und der Service-Schicht.</p>
+ */
 @RestController
 @RequestMapping("/api/games")
 @RequiredArgsConstructor
 public class GameController {
 
-    private final GameService gameService;  // Service korrekt injizieren
+    /**
+     * Service zur Verarbeitung von Spiel- und Rundendaten.
+     */
+    private final GameService gameService;
 
     /**
      * Liefert alle Spiele, an denen ein bestimmter Spieler beteiligt ist.
      *
-     * @param playerId ID des Spielers
-     * @return Liste der Spiele des Spielers
+     * <p>Der Endpunkt gibt sowohl aktive als auch abgeschlossene Spiele zurück,
+     * sofern diese dem angegebenen Spieler zugeordnet sind.</p>
+     *
+     * @param playerId eindeutige ID des Spielers
+     * @return Liste aller Spiele des Spielers
      */
     @GetMapping("/player/{playerId}")
     public List<Game> getGamesByPlayer(@PathVariable Long playerId) {
@@ -26,10 +43,10 @@ public class GameController {
     }
 
     /**
-     * Liefert ein Spiel anhand seiner ID.
+     * Liefert ein einzelnes Spiel anhand seiner ID.
      *
-     * @param gameId ID des Spiels
-     * @return das Spiel
+     * @param gameId eindeutige ID des Spiels
+     * @return das angeforderte {@link Game}
      */
     @GetMapping("/{gameId}")
     public Game getGameById(@PathVariable Long gameId) {
@@ -37,10 +54,13 @@ public class GameController {
     }
 
     /**
-     * Liefert das aktive Spiel eines Spielers (falls vorhanden).
+     * Liefert das aktuell aktive Spiel eines Spielers.
      *
-     * @param playerId ID des Spielers
-     * @return aktives Spiel oder null
+     * <p>Ein aktives Spiel ist ein Spiel, das noch nicht abgeschlossen ist.
+     * Existiert kein aktives Spiel, kann {@code null} zurückgegeben werden.</p>
+     *
+     * @param playerId eindeutige ID des Spielers
+     * @return aktives {@link Game} oder {@code null}, falls keines existiert
      */
     @GetMapping("/active/{playerId}")
     public Game getActiveGame(@PathVariable Long playerId) {
@@ -48,13 +68,16 @@ public class GameController {
     }
 
     /**
-     * Liefert alle Runden eines Spiels.
+     * Liefert alle Runden, die zu einem bestimmten Spiel gehören.
      *
-     * @param gameId ID des Spiels
-     * @return Liste der Runden
+     * <p>Die Reihenfolge der Runden entspricht der vom Service definierten
+     * Sortierung (z. B. chronologisch).</p>
+     *
+     * @param gameId eindeutige ID des Spiels
+     * @return Liste der {@link Round}-Objekte des Spiels
      */
     @GetMapping("/{gameId}/rounds")
-    public List<paf_grp_k.model.Round> getGameRounds(@PathVariable Long gameId) {
+    public List<Round> getGameRounds(@PathVariable Long gameId) {
         return gameService.getGameRounds(gameId);
     }
 }

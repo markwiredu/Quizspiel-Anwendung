@@ -1,11 +1,22 @@
+############################
+# HELP
+############################
 HELP.md
+
+
+############################
+# Gradle
+############################
 .gradle
 build/
 !gradle/wrapper/gradle-wrapper.jar
 !**/src/main/**/build/
 !**/src/test/**/build/
 
-### STS ###
+
+############################
+# STS (Spring Tool Suite)
+############################
 .apt_generated
 .classpath
 .factorypath
@@ -17,7 +28,10 @@ bin/
 !**/src/main/**/bin/
 !**/src/test/**/bin/
 
-### IntelliJ IDEA ###
+
+############################
+# IntelliJ IDEA
+############################
 .idea
 *.iws
 *.iml
@@ -26,12 +40,60 @@ out/
 !**/src/main/**/out/
 !**/src/test/**/out/
 
-### NetBeans ###
+
+############################
+# NetBeans
+############################
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
 
-### VS Code ###
+
+############################
+# VS Code
+############################
 .vscode/
+
+
+############################
+# Java / Maven
+############################
+target/
+*.class
+*.log
+
+
+############################
+# OS Files
+############################
+.DS_Store
+Thumbs.db
+
+
+############################
+# Environment / Secrets
+############################
+.env
+*.local
+application-*.properties
+application-*.yml
+
+# 👉 falls ihr z. B. application-dev.properties versionieren wollt,
+# diese Zeile oben gezielt entfernen
+
+
+############################
+# Uploads (WICHTIG!)
+############################
+# Benutzer-Uploads niemals committen
+src/main/resources/static/uploads/
+uploads/
+
+
+############################
+# EXPLIZIT ERLAUBT
+############################
+# Default-Avatar & statische Assets sollen im Repo bleiben
+!src/main/resources/static/images/**

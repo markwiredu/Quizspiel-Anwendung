@@ -26,14 +26,6 @@ public interface PlayerRepository extends JpaRepository<Player, Long> {
      */
     Optional<Player> findByUsername(String username);
 
-    /**
-     * Prüft, ob ein Spieler mit dem angegebenen Benutzernamen existiert.
-     *
-     * @param username der Benutzername, der überprüft werden soll
-     * @return {@code true}, wenn ein Spieler mit diesem Benutzernamen existiert,
-     *         ansonsten {@code false}
-     */
-    boolean existsByUsername(String username);
 
-    List<Player> findAllByOrderByGamesWonDesc();
+
 }

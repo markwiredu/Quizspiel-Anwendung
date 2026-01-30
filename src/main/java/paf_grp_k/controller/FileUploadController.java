@@ -8,70 +8,172 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+/**
+ * REST-Controller zum sicheren Hochladen von Dateien.
+ *
+ * <p>Diese Klasse stellt einen Endpunkt zum Upload von Profilbildern bereit.
+ * Die Dateien werden serverseitig validiert, sicher im Dateisystem gespeichert
+ * und anschließend über eine öffentliche URL bereitgestellt.</p>
+ *
+ * <p>Der Controller implementiert mehrere Sicherheitsmaßnahmen, u. a.:</p>
+ * <ul>
+ *     <li>Begrenzung der maximalen Dateigröße</li>
+ *     <li>Whitelist für erlaubte MIME-Typen</li>
+ *     <li>Schutz vor Pfad-Traversal-Angriffen</li>
+ *     <li>Zufällige Dateinamen zur Kollisionsvermeidung</li>
+ * </ul>
+ */
 @RestController
 @RequestMapping("/api/upload")
 public class FileUploadController {
 
-    // ✅ Ordner im Projektverzeichnis (neben build.gradle)
-    private static final Path UPLOAD_DIR = Paths.get("uploads").toAbsolutePath().normalize();
+    /**
+     * Zielverzeichnis für hochgeladene Dateien.
+     *
+     * <p>Das Verzeichnis {@code uploads/} liegt relativ zum Projekt-Root
+     * und wird bei Bedarf automatisch erstellt.</p>
+     */
+    private static final Path UPLOAD_DIR =
+            Paths.get("uploads").toAbsolutePath().normalize();
 
+    /**
+     * Maximale erlaubte Dateigröße (10 MB).
+     */
+    private static final long MAX_SIZE = 10L * 1024 * 1024;
+
+    /**
+     * Erlaubte MIME-Typen für Bilddateien.
+     *
+     * <p>Die Validierung erfolgt anhand des Content-Types
+     * und nicht ausschließlich über die Dateiendung.</p>
+     */
     private static final Set<String> ALLOWED_TYPES = Set.of(
-            "image/png", "image/jpeg", "image/gif", "image/webp"
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+            "image/gif",
+            "image/webp"
     );
 
-    @PostMapping(value = "/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<String> uploadProfileImage(@RequestParam("file") MultipartFile file) {
+    /**
+     * Fallback-Zuordnung von MIME-Typen zu Dateiendungen.
+     *
+     * <p>Wird verwendet, wenn der Originaldateiname keine
+     * oder keine gültige Endung enthält.</p>
+     */
+    private static final Map<String, String> EXT_BY_TYPE = Map.of(
+            "image/png", ".png",
+            "image/jpeg", ".jpg",
+            "image/jpg", ".jpg",
+            "image/gif", ".gif",
+            "image/webp", ".webp"
+    );
+
+    /**
+     * Lädt ein Profilbild hoch und speichert es serverseitig.
+     *
+     * <p>Der Endpunkt akzeptiert Multipart-Form-Data und führt
+     * mehrere Validierungsschritte durch, bevor die Datei gespeichert wird.</p>
+     *
+     * <p>Mögliche HTTP-Antworten:</p>
+     * <ul>
+     *     <li>{@code 200 OK} – Upload erfolgreich, Rückgabe der öffentlichen URL</li>
+     *     <li>{@code 400 Bad Request} – ungültige Datei, Größe oder Typ</li>
+     *     <li>{@code 500 Internal Server Error} – Fehler beim Speichern</li>
+     * </ul>
+     *
+     * @param file hochgeladene Bilddatei
+     * @return {@link ResponseEntity} mit der URL der gespeicherten Datei
+     */
+    @PostMapping(
+            value = "/profile-image",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+    )
+    public ResponseEntity<String> uploadProfileImage(
+            @RequestParam("file") MultipartFile file) {
+
         try {
+            // Validierung: Datei vorhanden
             if (file == null || file.isEmpty()) {
-                return ResponseEntity.badRequest().body("Keine Datei erhalten.");
+                return ResponseEntity.badRequest()
+                        .body("Keine Datei erhalten.");
             }
 
-            // ✅ optional: Server-seitiges Limit (z.B. 10MB)
-            if (file.getSize() > 10L * 1024 * 1024) {
-                return ResponseEntity.badRequest().body("Datei zu groß (max. 10MB).");
+            // Validierung: Dateigröße
+            if (file.getSize() > MAX_SIZE) {
+                return ResponseEntity.badRequest()
+                        .body("Datei zu groß (max. 10MB).");
             }
 
-            // ✅ MIME-Check
+            // Validierung: MIME-Typ
             String contentType = file.getContentType();
             if (contentType == null || !ALLOWED_TYPES.contains(contentType)) {
-                return ResponseEntity.badRequest().body("Ungültiger Dateityp: " + contentType);
+                return ResponseEntity.badRequest()
+                        .body("Ungültiger Bildtyp: " + contentType);
             }
 
+            // Zielverzeichnis erstellen (falls nicht vorhanden)
             Files.createDirectories(UPLOAD_DIR);
 
-            String originalName = StringUtils.cleanPath(file.getOriginalFilename() == null ? "" : file.getOriginalFilename());
-            String ext = "";
+            // Dateiendung bestimmen
+            String extension = resolveExtension(
+                    file.getOriginalFilename(), contentType);
 
-            int dot = originalName.lastIndexOf('.');
-            if (dot >= 0 && dot < originalName.length() - 1) {
-                ext = originalName.substring(dot).toLowerCase();
+            // Zufälliger Dateiname zur Vermeidung von Kollisionen
+            String filename = UUID.randomUUID() + extension;
+
+            Path target = UPLOAD_DIR.resolve(filename).normalize();
+
+            // Sicherheitsprüfung: Pfad-Traversal verhindern
+            if (!target.startsWith(UPLOAD_DIR)) {
+                return ResponseEntity.badRequest()
+                        .body("Ungültiger Dateipfad.");
             }
 
-            // Fallback Extension falls fehlt
-            if (ext.isBlank()) {
-                ext = switch (contentType) {
-                    case "image/png" -> ".png";
-                    case "image/jpeg" -> ".jpg";
-                    case "image/gif" -> ".gif";
-                    case "image/webp" -> ".webp";
-                    default -> "";
-                };
-            }
+            // Datei speichern
+            Files.copy(
+                    file.getInputStream(),
+                    target,
+                    StandardCopyOption.REPLACE_EXISTING
+            );
 
-            String newFileName = UUID.randomUUID() + ext;
-            Path target = UPLOAD_DIR.resolve(newFileName);
-
-            // ✅ überschreiben falls zufällig vorhanden
-            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-
-            // URL die im Browser funktioniert
-            return ResponseEntity.ok("/uploads/" + newFileName);
+            // Öffentliche URL zurückgeben
+            return ResponseEntity.ok("/uploads/" + filename);
 
         } catch (IOException e) {
-            return ResponseEntity.internalServerError().body("Upload fehlgeschlagen: " + e.getMessage());
+            return ResponseEntity.internalServerError()
+                    .body("Upload fehlgeschlagen: " + e.getMessage());
         }
+    }
+
+    /**
+     * Ermittelt eine sichere Dateiendung für die hochgeladene Datei.
+     *
+     * <p>Priorität:</p>
+     * <ol>
+     *     <li>Dateiendung aus dem Originaldateinamen</li>
+     *     <li>Fallback anhand des MIME-Typs</li>
+     * </ol>
+     *
+     * @param originalName ursprünglicher Dateiname
+     * @param contentType MIME-Typ der Datei
+     * @return Dateiendung inklusive Punkt (z. B. {@code ".jpg"})
+     */
+    private static String resolveExtension(
+            String originalName, String contentType) {
+
+        String clean = StringUtils.cleanPath(
+                originalName == null ? "" : originalName);
+
+        int dot = clean.lastIndexOf('.');
+        if (dot > 0 && dot < clean.length() - 1) {
+            return clean.substring(dot).toLowerCase();
+        }
+
+        return EXT_BY_TYPE.getOrDefault(contentType, "");
     }
 }

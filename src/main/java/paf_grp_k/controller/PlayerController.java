@@ -1,134 +1,157 @@
 package paf_grp_k.controller;
 
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.web.bind.annotation.*;
 import paf_grp_k.dto.CreatePlayerRequest;
 import paf_grp_k.dto.PlayerResponse;
 import paf_grp_k.model.Player;
 import paf_grp_k.repository.PlayerRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * REST-Controller zur Verwaltung von Spielern.
  *
- * <p>Dieser Controller stellt Endpunkte bereit, um Spieler zu registrieren,
- * Informationen über alle Spieler abzurufen sowie einen einzelnen Spieler
- * anhand seiner ID zu erhalten.</p>
+ * <p>Diese Klasse stellt Endpunkte zur Erstellung und Abfrage von Spielern bereit.
+ * Sensible Informationen wie Passwörter werden ausschließlich gehasht gespeichert
+ * und niemals an den Client zurückgegeben.</p>
  */
 @RestController
 @RequestMapping("/api/players")
 @RequiredArgsConstructor
 public class PlayerController {
 
-    // BCryptPasswordEncoder wird von Spring automatisch bereitgestellt
+    /**
+     * Standard-Avatar, der verwendet wird, wenn beim Anlegen
+     * eines Spielers kein Profilbild angegeben wird.
+     */
+    private static final String DEFAULT_AVATAR_URL = "/images/default-avatar.jpg";
+
+    /**
+     * Passwort-Encoder zum sicheren Hashen von Spielerpasswörtern.
+     */
     private final BCryptPasswordEncoder passwordEncoder;
 
+    /**
+     * Repository zum Zugriff auf persistierte Spieler.
+     */
     private final PlayerRepository playerRepository;
 
     /**
-     * Registriert einen neuen Spieler.
+     * Erstellt einen neuen Spieler.
      *
-     * <p>Es wird geprüft, ob der Benutzername bereits vergeben ist. Falls ja,
-     * wird ein {@code 400 Bad Request} zurückgegeben. Andernfalls wird ein neuer
-     * Spieler angelegt, gespeichert und als {@link PlayerResponse} zurückgegeben.</p>
+     * <p>Der Endpunkt führt mehrere Validierungen durch:</p>
+     * <ul>
+     *     <li>Username darf nicht leer sein</li>
+     *     <li>Passwort muss mindestens 8 Zeichen lang sein</li>
+     *     <li>Username muss eindeutig sein</li>
+     * </ul>
      *
-     * @param request Daten des anzulegenden Spielers
-     * @return HTTP-200 mit Spielerinformationen oder HTTP-400 bei Fehlern
+     * <p>Passwörter werden mit BCrypt gehasht gespeichert.
+     * Falls kein Profilbild angegeben wird, wird ein Standard-Avatar gesetzt.</p>
+     *
+     * <p>Mögliche HTTP-Antworten:</p>
+     * <ul>
+     *     <li>{@code 200 OK} – Spieler erfolgreich erstellt</li>
+     *     <li>{@code 400 Bad Request} – ungültige Eingabedaten</li>
+     * </ul>
+     *
+     * @param req Request-DTO mit Username, Passwort und optionalem Profilbild
+     * @return {@link ResponseEntity} mit {@link PlayerResponse}
      */
-
     @PostMapping
-    public ResponseEntity<?> createPlayer(@RequestBody CreatePlayerRequest request) {
+    public ResponseEntity<?> createPlayer(@RequestBody CreatePlayerRequest req) {
 
-        if (request.getPassword() == null || request.getPassword().length() < 8) {
-            return ResponseEntity.badRequest().body("Passwort muss mindestens 8 Zeichen haben.");
+        String username = req.getUsername() == null
+                ? ""
+                : req.getUsername().trim();
+
+        String password = req.getPassword();
+
+        // Validierung der Eingaben
+        if (username.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body("Username darf nicht leer sein.");
         }
 
-        if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
-            return ResponseEntity.badRequest().body("Username darf nicht leer sein.");
+        if (password == null || password.length() < 8) {
+            return ResponseEntity.badRequest()
+                    .body("Passwort muss mindestens 8 Zeichen haben.");
         }
 
-        if (playerRepository.findByUsername(request.getUsername()).isPresent()) {
-            return ResponseEntity.badRequest().body("Username ist bereits vergeben.");
+        if (playerRepository.findByUsername(username).isPresent()) {
+            return ResponseEntity.badRequest()
+                    .body("Username ist bereits vergeben.");
         }
+
+        // Standard-Avatar setzen, falls keiner angegeben wurde
+        String avatar =
+                (req.getProfileImageUrl() == null || req.getProfileImageUrl().trim().isEmpty())
+                        ? DEFAULT_AVATAR_URL
+                        : req.getProfileImageUrl().trim();
 
         Player player = new Player();
-        player.setUsername(request.getUsername());
-        player.setPasswordHash(passwordEncoder.encode(request.getPassword()));
-        player.setProfileImageUrl(request.getProfileImageUrl());
+        player.setUsername(username);
+        player.setPasswordHash(passwordEncoder.encode(password));
+        player.setProfileImageUrl(avatar);
         player.setTotalGames(0);
         player.setGamesWon(0);
         player.setGamesLost(0);
         player.setHighscore(0);
 
-        Player savedPlayer = playerRepository.save(player);
-
-        PlayerResponse response = new PlayerResponse();
-        response.setId(savedPlayer.getId());
-        response.setUsername(savedPlayer.getUsername());
-        response.setProfileImageUrl(savedPlayer.getProfileImageUrl());
-        response.setTotalGames(savedPlayer.getTotalGames());
-        response.setGamesWon(savedPlayer.getGamesWon());
-        response.setGamesLost(savedPlayer.getGamesLost());
-        response.setHighscore(savedPlayer.getHighscore());
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(
+                toResponse(playerRepository.save(player))
+        );
     }
 
-
     /**
-     * Ruft alle Spieler aus der Datenbank ab.
+     * Liefert alle registrierten Spieler.
      *
-     * <p>Die Spieler werden in eine Liste von {@link PlayerResponse} Objekten
-     * konvertiert, um nur relevante Informationen zurückzugeben.</p>
+     * <p>Die Rückgabe enthält ausschließlich öffentliche Spielerdaten.</p>
      *
      * @return Liste aller Spieler als {@link PlayerResponse}
      */
     @GetMapping
     public List<PlayerResponse> getAllPlayers() {
-        return playerRepository.findAll().stream()
-                .map(this::convertToResponse)
-                .collect(Collectors.toList());
+        return playerRepository.findAll()
+                .stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     /**
-     * Ruft einen einzelnen Spieler anhand seiner ID ab.
+     * Liefert einen einzelnen Spieler anhand seiner ID.
      *
-     * <p>Falls der Spieler nicht existiert, wird ein {@code 404 Not Found}
-     * zurückgegeben.</p>
-     *
-     * @param id ID des gewünschten Spielers
-     * @return HTTP-200 mit Spielerinformationen oder HTTP-404 wenn nicht gefunden
+     * @param id eindeutige Spieler-ID
+     * @return {@link PlayerResponse} oder {@code 404 Not Found}, falls nicht vorhanden
      */
     @GetMapping("/{id}")
     public ResponseEntity<PlayerResponse> getPlayerById(@PathVariable Long id) {
         return playerRepository.findById(id)
-                .map(this::convertToResponse)
+                .map(this::toResponse)
                 .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     /**
-     * Konvertiert ein {@link Player}-Entity in ein {@link PlayerResponse}-DTO.
+     * Wandelt ein {@link Player}-Entity in ein {@link PlayerResponse}-DTO um.
      *
-     * <p>Diese Hilfsmethode stellt sicher, dass nur benötigte Daten an das
-     * Frontend zurückgegeben werden.</p>
+     * <p>Sensible Daten wie Passwort-Hashes werden nicht übertragen.</p>
      *
-     * @param player Spieler-Entity aus der Datenbank
-     * @return Konvertierte {@link PlayerResponse}-Darstellung
+     * @param player persistiertes Spieler-Entity
+     * @return DTO mit öffentlichen Spielerdaten
      */
-    private PlayerResponse convertToResponse(Player player) {
-        PlayerResponse response = new PlayerResponse();
-        response.setId(player.getId());
-        response.setUsername(player.getUsername());
-        response.setProfileImageUrl(player.getProfileImageUrl());
-        response.setTotalGames(player.getTotalGames());
-        response.setGamesWon(player.getGamesWon());
-        response.setGamesLost(player.getGamesLost());
-        response.setHighscore(player.getHighscore());
-        return response;
+    private PlayerResponse toResponse(Player player) {
+        PlayerResponse r = new PlayerResponse();
+        r.setId(player.getId());
+        r.setUsername(player.getUsername());
+        r.setProfileImageUrl(player.getProfileImageUrl());
+        r.setTotalGames(player.getTotalGames());
+        r.setGamesWon(player.getGamesWon());
+        r.setGamesLost(player.getGamesLost());
+        r.setHighscore(player.getHighscore());
+        return r;
     }
 }

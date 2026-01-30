@@ -1,68 +1,108 @@
 <!DOCTYPE html>
-<html>
+<html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!--
+    ============================================================
+    File: signup.html
+    Purpose:
+      - Registrierungsseite für QuizDuell.
+      - Benutzer legt einen neuen Spieler an (username + password).
+      - Optional kann ein Profilbild hochgeladen werden.
+      - Profilbild wird zuerst per Multipart Upload hochgeladen,
+        danach wird die zurückgegebene URL in der Spieler-Erstellung genutzt.
+
+    Dependencies:
+      - Bootstrap 5 (Layout/Styles)
+      - REST API:
+          POST /api/upload/profile-image   -> speichert Bilddatei, liefert öffentliche URL als Text
+          POST /api/players                -> erstellt neuen Spieler (username, password, profileImageUrl)
+
+    Validation (Client-Side):
+      - Nur Bild-Dateien (MIME type startet mit "image/")
+      - Maximal 10MB
+      - Username/Password werden im Submit über required + Backend validiert
+
+    Storage:
+      - Diese Seite speichert absichtlich NICHT localStorage.currentPlayer.
+        Sie navigiert nach signup_success.html (mit username als Query Param).
+    ============================================================
+  -->
+
   <title>Registrieren - QuizDuell</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" defer></script>
+
   <style>
-    .container-center {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
+    /* =========================
+       LAYOUT
+    ========================= */
+    .container-center{display:flex;justify-content:center;align-items:center;min-height:100vh}
+
+    /* =========================
+       PROFILE PREVIEW (Avatar)
+    ========================= */
+    .profile-preview{
+      width:100px;height:100px;border-radius:50%;object-fit:cover;
+      border:2px solid #dee2e6;margin:10px auto;display:block
     }
-    .profile-preview {
-        width: 100px;
-        height: 100px;
-        border-radius: 50%;
-        object-fit: cover;
-        border: 2px solid #dee2e6;
-        margin: 10px auto;
-        display: block;
+
+    /* =========================
+       UPLOAD DROPZONE
+    ========================= */
+    .upload-area{
+      border:2px dashed #dee2e6;border-radius:10px;padding:20px;text-align:center;
+      cursor:pointer;transition:border-color .3s
     }
-    .upload-area {
-        border: 2px dashed #dee2e6;
-        border-radius: 10px;
-        padding: 20px;
-        text-align: center;
-        cursor: pointer;
-        transition: border-color 0.3s;
-    }
-    .upload-area:hover {
-        border-color: #007bff;
-    }
-    .upload-area.dragover {
-        border-color: #007bff;
-        background-color: #f8f9fa;
-    }
+    .upload-area:hover{border-color:#007bff}
+    .upload-area.dragover{border-color:#007bff;background:#f8f9fa}
   </style>
 </head>
+
 <body class="bg-light">
+
+<!--
+  ============================================================
+  SECTION: Signup Card
+  - Upload Bereich (Click + Drag&Drop)
+  - Username / Password
+  - Submit -> /api/players
+  ============================================================
+-->
 <div class="container-center">
   <div class="card p-4 shadow" style="max-width: 500px; width: 100%;">
     <h3 class="mb-3 text-center">Spieler Registrieren</h3>
 
+    <!-- Feedback -->
     <div id="errorMessage" class="alert alert-danger d-none"></div>
     <div id="successMessage" class="alert alert-success d-none"></div>
 
     <form id="signupForm">
-      <!-- Profilbild Upload -->
       <div class="mb-4 text-center">
         <label class="form-label d-block">Profilbild</label>
 
+        <!-- Dropzone/Upload Area -->
         <div class="upload-area" id="uploadArea">
-          <img id="profilePreview" src="/images/default-avatar.jpg" class="profile-preview mb-2"
-               alt="Profilbild Vorschau">
+          <img id="profilePreview" src="/images/default-avatar.jpg" class="profile-preview mb-2" alt="Profilbild Vorschau">
           <p class="mb-1">Klicken zum Hochladen oder Bild hierher ziehen</p>
           <small class="text-muted">Max. 10MB (JPG, PNG, GIF)</small>
+
+          <!--
+            File input bleibt hidden, wird per click auf uploadArea ausgelöst.
+            accept="image/*" hilft beim Dateidialog, ersetzt aber nicht die echte Validierung.
+          -->
           <input type="file" id="profileImage" accept="image/*" class="d-none">
         </div>
+
+        <!--
+          Speichert die finale URL, die an /api/players gesendet wird.
+          Default ist das Standard-Avatar.
+        -->
         <input type="hidden" id="profileImageUrl" value="/images/default-avatar.jpg">
       </div>
 
-      <!-- Benutzername und Passwort -->
       <div class="mb-3">
         <label for="username" class="form-label">Benutzername *</label>
         <input type="text" class="form-control" id="username" placeholder="Benutzername" required>
@@ -83,158 +123,269 @@
 </div>
 
 <script>
-  const uploadArea = document.getElementById('uploadArea');
-  const fileInput = document.getElementById('profileImage');
-  const profilePreview = document.getElementById('profilePreview');
-  const profileImageUrl = document.getElementById('profileImageUrl');
-  const errorDiv = document.getElementById('errorMessage');
-  const successDiv = document.getElementById('successMessage');
+  /* =====================================================================
+     JSDOC TYPE DEFINITIONS
+     ===================================================================== */
 
-  // Klick auf Upload-Bereich
-  uploadArea.addEventListener('click', () => {
-      fileInput.click();
+  /**
+   * @typedef {Object} PlayerResponse
+   * @property {number} id
+   * @property {string} username
+   * @property {string} [profileImageUrl]
+   * @property {number} totalGames
+   * @property {number} gamesWon
+   * @property {number} gamesLost
+   * @property {number} highscore
+   */
+
+  /**
+   * @typedef {Object} CreatePlayerRequest
+   * @property {string} username
+   * @property {string} password
+   * @property {string} profileImageUrl
+   */
+
+  /* =========================
+     DOM HELPERS
+  ========================= */
+
+  /**
+   * Kurzform für document.getElementById
+   * @param {string} id
+   * @returns {HTMLElement|null}
+   */
+  const $ = (id) => document.getElementById(id);
+
+  /**
+   * Zeigt/Versteckt ein Element über die Klasse "d-none".
+   * @param {HTMLElement} el
+   * @param {boolean} show
+   * @returns {void}
+   */
+  const toggle = (el, show) => el.classList.toggle('d-none', !show);
+
+  /* =========================
+     ELEMENT REFERENCES
+  ========================= */
+
+  /**
+   * Bündelt alle relevanten DOM-Elemente.
+   */
+  const els = {
+    uploadArea: $('uploadArea'),
+    fileInput: $('profileImage'),
+    preview: $('profilePreview'),
+    imageUrl: $('profileImageUrl'),
+    error: $('errorMessage'),
+    success: $('successMessage'),
+    signupForm: $('signupForm'),
+    username: $('username'),
+    password: $('password')
+  };
+
+  /* =========================
+     CONSTANTS
+  ========================= */
+
+  /** @type {string} Standard-Avatar, wenn Upload fehlschlägt oder keiner gewählt wurde */
+  const DEFAULT_AVATAR = '/images/default-avatar.jpg';
+
+  /** @type {number} Maximale Upload-Größe in Bytes (10MB) */
+  const MAX_BYTES = 10 * 1024 * 1024;
+
+  /* =========================
+     UPLOAD UI EVENTS
+  ========================= */
+
+  /**
+   * Klick auf die Upload-Area öffnet den Datei-Dialog.
+   */
+  els.uploadArea.addEventListener('click', () => els.fileInput.click());
+
+  /**
+   * Dragover: Standardverhalten verhindern (sonst öffnet Browser Datei),
+   * und visuell "dragover" markieren.
+   */
+  els.uploadArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    els.uploadArea.classList.add('dragover');
   });
 
-  // Drag & Drop Funktionen
-  uploadArea.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      uploadArea.classList.add('dragover');
+  /**
+   * Dragleave: Visuelle Markierung zurücksetzen.
+   */
+  els.uploadArea.addEventListener('dragleave', () => {
+    els.uploadArea.classList.remove('dragover');
   });
 
-  uploadArea.addEventListener('dragleave', () => {
-      uploadArea.classList.remove('dragover');
+  /**
+   * Drop: Datei aus dem Drag&Drop übernehmen und Upload starten.
+   */
+  els.uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    els.uploadArea.classList.remove('dragover');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) handleImageUpload(file);
   });
 
-  uploadArea.addEventListener('drop', (e) => {
-      e.preventDefault();
-      uploadArea.classList.remove('dragover');
-
-      if (e.dataTransfer.files.length > 0) {
-          handleImageUpload(e.dataTransfer.files[0]);
-      }
+  /**
+   * Change am File-Input: Datei aus dem Dialog übernehmen.
+   */
+  els.fileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageUpload(file);
   });
 
-  // Datei auswählen
-  fileInput.addEventListener('change', (e) => {
-      if (e.target.files.length > 0) {
-          handleImageUpload(e.target.files[0]);
-      }
-  });
+  /* =========================
+     MESSAGE HELPERS
+  ========================= */
 
-  // Bild-Upload verarbeiten
-  function handleImageUpload(file) {
-      // Dateityp prüfen
-      if (!file.type.startsWith('image/')) {
-          showError('Bitte nur Bild-Dateien hochladen!');
-          return;
-      }
-
-      // Dateigröße prüfen (2MB)
-      if (file.size > 10 * 1024 * 1024) {
-          showError('Datei zu groß! Maximal 10MB erlaubt.');
-          return;
-      }
-
-      // Vorschau anzeigen
-      const reader = new FileReader();
-      reader.onload = (e) => {
-          profilePreview.src = e.target.result;
-      };
-      reader.readAsDataURL(file);
-
-      // Datei hochladen
-      uploadFile(file);
+  /**
+   * Blendet Error/Success aus.
+   * @returns {void}
+   */
+  function hideMessages() {
+    toggle(els.error, false);
+    toggle(els.success, false);
   }
 
-  // Datei zum Server hochladen
-  function uploadFile(file) {
+  /**
+   * Zeigt Error und blendet Success aus.
+   * @param {string} message
+   * @returns {void}
+   */
+  function showError(message) {
+    els.error.textContent = message;
+    toggle(els.error, true);
+    toggle(els.success, false);
+  }
+
+  /**
+   * Zeigt Success und blendet Error aus.
+   * @param {string} message
+   * @returns {void}
+   */
+  function showSuccess(message) {
+    els.success.textContent = message;
+    toggle(els.success, true);
+    toggle(els.error, false);
+  }
+
+  /* =========================
+     IMAGE UPLOAD FLOW
+  ========================= */
+
+  /**
+   * Validiert ein ausgewähltes Bild, zeigt sofort eine Vorschau (FileReader),
+   * und triggert danach den Upload zum Backend.
+   *
+   * @param {File} file
+   * @returns {void}
+   */
+  function handleImageUpload(file) {
+    hideMessages();
+
+    // MIME Type Check (zusätzliche Sicherheit, ersetzt nicht Backend-Checks)
+    if (!file.type?.startsWith('image/')) return showError('Bitte nur Bild-Dateien hochladen!');
+
+    // Max Size Check
+    if (file.size > MAX_BYTES) return showError('Datei zu groß! Maximal 10MB erlaubt.');
+
+    // Vorschau anzeigen (lokal, unabhängig vom Upload-Erfolg)
+    const reader = new FileReader();
+    reader.onload = (e) => { els.preview.src = e.target.result; };
+    reader.readAsDataURL(file);
+
+    // Upload ans Backend
+    uploadFile(file);
+  }
+
+  /**
+   * Upload der Bilddatei via Multipart/FormData.
+   *
+   * REST:
+   * - POST /api/upload/profile-image
+   * Response:
+   * - Text: "/uploads/<uuid>.<ext>" (öffentlich erreichbar)
+   *
+   * Bei Fehler:
+   * - imageUrl wird wieder auf DEFAULT_AVATAR gesetzt
+   *
+   * @param {File} file
+   * @returns {Promise<void>}
+   */
+  async function uploadFile(file) {
+    try {
       const formData = new FormData();
       formData.append('file', file);
 
-      fetch('/api/upload/profile-image', {
-  method: 'POST',
-  body: formData
-})
-.then(async (response) => {
-  const text = await response.text().catch(() => '');
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status} - ${text || 'Upload fehlgeschlagen'}`);
-  }
-  return text;
-})
-.then(fileUrl => {
-  profileImageUrl.value = fileUrl;
-  showSuccess('Profilbild erfolgreich hochgeladen!');
-})
-.catch(error => {
-  showError('Upload fehlgeschlagen: ' + error.message);
-  profileImageUrl.value = '/images/default-avatar.jpg';
-});
+      const res = await fetch('/api/upload/profile-image', { method: 'POST', body: formData });
+      const text = await res.text().catch(() => '');
 
+      if (!res.ok) throw new Error(`HTTP ${res.status} - ${text || 'Upload fehlgeschlagen'}`);
+
+      // Backend liefert die URL als Text
+      els.imageUrl.value = text;
+      showSuccess('Profilbild erfolgreich hochgeladen!');
+    } catch (e) {
+      // Fallback: Standardavatar nutzen, wenn Upload schiefgeht
+      els.imageUrl.value = DEFAULT_AVATAR;
+      showError('Upload fehlgeschlagen: ' + e.message);
+    }
   }
 
-  // Registrierung verarbeiten
-  document.getElementById('signupForm').addEventListener('submit', function(event) {
-      event.preventDefault();
+  /* =========================
+     SIGNUP FLOW
+  ========================= */
 
-      const username = document.getElementById('username').value;
-      const password = document.getElementById('password').value;
-      const imageUrl = profileImageUrl.value;
+  /**
+   * Submit Handler:
+   * - Liest username/password/profileImageUrl aus dem Formular
+   * - Erstellt neuen Spieler über POST /api/players
+   * - Weiterleitung auf signup_success.html mit username als Query Param
+   */
+  els.signupForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    hideMessages();
 
-      // Fehler-Meldungen verstecken
-      hideMessages();
+    /** @type {string} */
+    const username = els.username.value;
 
-      // Spieler über REST API erstellen
-      fetch('/api/players', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-              username: username,
-              password: password,
-              profileImageUrl: imageUrl
-          })
-      })
-      .then(response => {
-          if (response.status === 400) {
-              throw new Error('Benutzername existiert bereits!');
-          }
-          if (!response.ok) {
-              throw new Error('Registrierung fehlgeschlagen!');
-          }
-          return response.json();
-      })
-      .then(player => {
-          showSuccess(`✅ Erfolgreich registriert! Spieler: ${player.username}`);
+    /** @type {string} */
+    const password = els.password.value;
 
-          // Nach 2 Sekunden weiterleiten
-          setTimeout(() => {
-              window.location.href = '/signup_success.html?username=' + encodeURIComponent(player.username);
-          }, 2000);
-      })
-      .catch(error => {
-          showError('❌ ' + error.message);
+    /** @type {string} */
+    const profileImageUrl = els.imageUrl.value;
+
+    /** @type {CreatePlayerRequest} */
+    const payload = { username, password, profileImageUrl };
+
+    try {
+      const res = await fetch('/api/players', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       });
+
+      // Dein Backend nutzt 400 sowohl für "Username vergeben" als auch andere Validierungen.
+      // Hier bleibt dein Verhalten bewusst einfach.
+      if (res.status === 400) throw new Error('Benutzername existiert bereits!');
+      if (!res.ok) throw new Error('Registrierung fehlgeschlagen!');
+
+      /** @type {PlayerResponse} */
+      const player = await res.json();
+
+      showSuccess(`✅ Erfolgreich registriert! Spieler: ${player.username}`);
+
+      setTimeout(() => {
+        location.href = '/signup_success.html?username=' + encodeURIComponent(player.username);
+      }, 2000);
+
+    } catch (e) {
+      showError('❌ ' + e.message);
+    }
   });
-
-  // Hilfsfunktionen
-  function showError(message) {
-      errorDiv.textContent = message;
-      errorDiv.classList.remove('d-none');
-      successDiv.classList.add('d-none');
-  }
-
-  function showSuccess(message) {
-      successDiv.textContent = message;
-      successDiv.classList.remove('d-none');
-      errorDiv.classList.add('d-none');
-  }
-
-  function hideMessages() {
-      errorDiv.classList.add('d-none');
-      successDiv.classList.add('d-none');
-  }
 </script>
+
 </body>
 </html>

@@ -2,289 +2,164 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
+
+  <!--
+    ============================================================
+    File: game.html
+    Purpose:
+      - UI für das Quiz-Duell (2 Spieler, 5 Runden)
+      - Anzeige: Spieler, Punkte, Frage, Antworten, Timer, Ergebnis
+      - Kommunikation: WebSocket (SockJS + STOMP) mit Spring Backend
+    Dependencies:
+      - Bootstrap 5.3.3 (Layout/Buttons/Grid)
+      - SockJS 1.6.1 + STOMP 2.3.3 (WebSocket Messaging)
+    Runtime Storage:
+      - localStorage.currentPlayer (JSON)
+      - localStorage.currentGame   (JSON)
+      - optional: autoJoinCategory (für "Play again")
+    WebSocket Topics:
+      - /topic/game/{gameId}              (GAME_START, ROUND_START, GAME_END, ...)
+      - /topic/game/{gameId}/timer        (TIMER_START, TIMER_UPDATE)
+      - /topic/game/{gameId}/countdown    (COUNTDOWN)
+      - /topic/game/{gameId}/result       (ROUND_RESULT payload)
+    REST Endpoints:
+      - GET /api/games/{gameId}
+      - GET /api/games/{gameId}/rounds
+    ============================================================
+  -->
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>QuizDuell - Spiel</title>
+
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.6.1/sockjs.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/stomp.js/2.3.3/stomp.min.js"></script>
+
   <style>
-    :root {
-        --player1-color: #4e73df;
-        --player2-color: #e74a3b;
-        --neutral-color: #6c757d;
+    /* =========================
+       THEME / COLORS
+    ========================= */
+    :root{
+      --player1-color:#4e73df;
+      --player2-color:#e74a3b;
+      --neutral-color:#6c757d;
     }
 
-    .game-container {
-        max-width: 1200px;
-        margin: 0 auto;
+    /* =========================
+       LAYOUT BASICS
+    ========================= */
+    .game-container{max-width:1200px;margin:0 auto}
+
+    .player-panel{
+      min-height:260px;display:flex;flex-direction:column;
+      justify-content:center;align-items:center;
+    }
+    .player1-panel{background:linear-gradient(135deg,var(--player1-color) 0%,#2e59d9 100%);color:#fff}
+    .player2-panel{background:linear-gradient(135deg,var(--player2-color) 0%,#c0352b 100%);color:#fff}
+    .col-4>.player-panel{width:100%}
+    .player-panel h5{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+
+    .question-card{
+      background:#fff;border:3px solid #dee2e6;border-radius:15px;
+      padding:30px;margin:20px 0;box-shadow:0 5px 20px rgba(0,0,0,.1)
     }
 
-    .player-panel {
-  min-height: 260px;           /* ✅ gleiche Höhe wie blau */
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-}
-
-
-    .player1-panel {
-        background: linear-gradient(135deg, var(--player1-color) 0%, #2e59d9 100%);
-        color: white;
+    /* =========================
+       ANSWERS GRID
+    ========================= */
+    .answers-grid{
+      display:grid;grid-template-columns:repeat(2,minmax(220px,1fr));
+      gap:12px;max-width:600px;margin:0 auto;
+    }
+    .answers-grid .answer-btn{
+      height:90px;font-size:1.1rem;font-weight:600;border-radius:14px;
+      border:2px solid #dee2e6 !important;text-align:center !important;
+      display:flex;align-items:center;justify-content:center;
     }
 
-    .player2-panel {
-        background: linear-gradient(135deg, var(--player2-color) 0%, #c0352b 100%);
-        color: white;
+    /* =========================
+       TIMER VISUALS
+    ========================= */
+    .timer-bar{height:10px;background:#e9ecef;border-radius:5px;overflow:hidden;margin:20px 0}
+    .timer-progress{height:100%;background:linear-gradient(90deg,#1cc88a,#4e73df);transition:width 1s linear}
+
+    .score-display{font-size:2.5rem;font-weight:700;text-shadow:2px 2px 4px rgba(0,0,0,.2)}
+
+    /* =========================
+       COUNTDOWN OVERLAY
+    ========================= */
+    .countdown-overlay{
+      position:fixed;inset:0;background:rgba(0,0,0,.9);
+      display:flex;align-items:center;justify-content:center;z-index:1000
     }
+    .countdown-number{font-size:15rem;color:#fff;font-weight:700;animation:countdownPop .5s ease-out}
+    @keyframes countdownPop{0%{transform:scale(.5);opacity:0}100%{transform:scale(1);opacity:1}}
 
-    .col-4 > .player-panel {
-  width: 100%;
-}
-
-
-.player-panel h5 {
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-
-    .question-card {
-        background: white;
-        border: 3px solid #dee2e6;
-        border-radius: 15px;
-        padding: 30px;
-        margin: 20px 0;
-        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    /* =========================
+       RESULT MODAL / OVERLAY
+    ========================= */
+    .game-result-modal{
+      position:fixed;inset:0;background:rgba(0,0,0,.8);
+      display:flex;align-items:center;justify-content:center;z-index:2000
     }
-
-    .answer-option {
-        background: #f8f9fa;
-        border: 2px solid #dee2e6;
-        border-radius: 10px;
-        padding: 15px;
-        margin: 10px 0;
-        cursor: pointer;
-        transition: all 0.2s ease;
+    .result-card{
+      background:#fff;border-radius:20px;padding:40px;max-width:500px;
+      text-align:center;animation:slideUp .5s ease-out
     }
+    @keyframes slideUp{from{transform:translateY(50px);opacity:0}to{transform:translateY(0);opacity:1}}
 
-    .answers-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
-  gap: 12px;                 /* weniger Abstand */
-  max-width: 600px;          /* macht es zentraler */
-  margin: 0 auto;            /* zentriert */
-}
-
-.answers-grid .answer-btn {
-  height: 90px;              /* größere Kacheln */
-  font-size: 1.1rem;
-  font-weight: 600;
-  border-radius: 14px;
-  border: 2px solid #dee2e6 !important;
-  text-align: center !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-
-
-
-
-    .answer-option:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    /* =========================
+       ANSWER STATES (VISUAL FEEDBACK)
+    ========================= */
+    .answer-btn.correct{
+      background:linear-gradient(135deg,#1cc88a 0%,#17a673 100%) !important;
+      color:#fff !important;border-color:#1cc88a !important;animation:pulseCorrect .5s ease-in-out
     }
-
-    .answer-option.selected {
-        border-color: var(--player1-color);
-        background-color: rgba(78, 115, 223, 0.1);
+    .answer-btn.incorrect{
+      background:linear-gradient(135deg,#e74a3b 0%,#c0352b 100%) !important;
+      color:#fff !important;border-color:#e74a3b !important;animation:shake .5s ease-in-out
     }
-
-    .answer-option.correct {
-        border-color: #1cc88a;
-        background-color: rgba(28, 200, 138, 0.1);
+    .answer-btn.selected{
+      border-color:#4e73df !important;border-width:3px !important;
+      box-shadow:0 0 0 3px rgba(78,115,223,.3) !important
     }
+    @keyframes pulseCorrect{0%{transform:scale(1)}50%{transform:scale(1.05)}100%{transform:scale(1)}}
+    @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}75%{transform:translateX(5px)}}
 
-    .answer-option.incorrect {
-        border-color: #e74a3b;
-        background-color: rgba(231, 74, 59, 0.1);
+    /* =========================
+       AVATAR STYLING
+    ========================= */
+    #player1Avatar, #player2Avatar{
+      width: 80px !important;
+      height: 80px !important;
+      border-radius: 50% !important;
+      object-fit: cover !important;
+      border: 4px solid white !important;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2) !important;
+      display: block !important;
     }
-
-    .timer-bar {
-        height: 10px;
-        background: #e9ecef;
-        border-radius: 5px;
-        overflow: hidden;
-        margin: 20px 0;
-    }
-
-    .timer-progress {
-        height: 100%;
-        background: linear-gradient(90deg, #1cc88a, #4e73df);
-        transition: width 1s linear;
-    }
-
-    .score-display {
-        font-size: 2.5rem;
-        font-weight: bold;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-    }
-
-    .round-indicator {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        background: white;
-        border-radius: 50%;
-        width: 50px;
-        height: 50px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        border: 3px solid var(--player1-color);
-    }
-
-    .player-avatar {
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        border: 4px solid white;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-
-    .opponent-answer-indicator {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: var(--neutral-color);
-        color: white;
-        font-weight: bold;
-        margin-left: 10px;
-    }
-
-    .opponent-answer-indicator.answered {
-        background: var(--player2-color);
-        animation: pulse 1s infinite;
-    }
-
-    @keyframes pulse {
-        0% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-        100% { transform: scale(1); }
-    }
-
-    .countdown-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.9);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-    }
-
-    .countdown-number {
-        font-size: 15rem;
-        color: white;
-        font-weight: bold;
-        animation: countdownPop 0.5s ease-out;
-    }
-
-    @keyframes countdownPop {
-        0% { transform: scale(0.5); opacity: 0; }
-        100% { transform: scale(1); opacity: 1; }
-    }
-
-    .game-result-modal {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.8);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 2000;
-    }
-
-    .result-card {
-        background: white;
-        border-radius: 20px;
-        padding: 40px;
-        max-width: 500px;
-        text-align: center;
-        animation: slideUp 0.5s ease-out;
-    }
-
-    @keyframes slideUp {
-        from { transform: translateY(50px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-    }
-    .answer-btn.correct {
-    background: linear-gradient(135deg, #1cc88a 0%, #17a673 100%) !important;
-    color: white !important;
-    border-color: #1cc88a !important;
-    animation: pulseCorrect 0.5s ease-in-out;
-}
-
-.answer-btn.incorrect {
-    background: linear-gradient(135deg, #e74a3b 0%, #c0352b 100%) !important;
-    color: white !important;
-    border-color: #e74a3b !important;
-    animation: shake 0.5s ease-in-out;
-}
-
-.answer-btn.selected {
-    border-color: #4e73df !important;
-    border-width: 3px !important;
-    box-shadow: 0 0 0 3px rgba(78, 115, 223, 0.3) !important;
-}
-
-@keyframes pulseCorrect {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
-}
-
-@keyframes shake {
-    0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    75% { transform: translateX(5px); }
-}
-
-/* Punkte-Animation */
-@keyframes scorePop {
-    0% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.5); opacity: 0.8; }
-    100% { transform: scale(1); opacity: 1; }
-}
-
-.score-update {
-    animation: scorePop 0.5s ease-out;
-}
   </style>
 </head>
+
 <body>
 <div class="game-container py-4">
-  <!-- Spiel-Header -->
+
+  <!--
+    ============================================================
+    SECTION: GAME HEADER
+    - Links: eigener Spieler (Avatar, Name, Score)
+    - Mitte: "VS", Kategorie, Rundenanzeige
+    - Rechts: Gegner (Avatar, Name, Score)
+    ============================================================
+  -->
   <div class="row mb-4">
     <div class="col-4">
       <div class="player-panel player1-panel text-center">
-        <img id="player1Avatar" src="/images/default-avatar.jpg" class="player-avatar mb-2">
+        <img id="player1Avatar"
+             src="/images/default-avatar.png"
+             class="player-avatar mb-2"
+             alt="Spieler 1"
+             onerror="this.onerror=null; this.src='/images/default-avatar.png';">
         <h5 id="player1Name">Du</h5>
         <div class="score-display" id="player1Score">0</div>
         <small>Punkte</small>
@@ -301,36 +176,39 @@
 
     <div class="col-4">
       <div class="player-panel player2-panel text-center">
-        <img id="player2Avatar" src="/images/default-avatar.jpg" class="player-avatar mb-2">
+        <img id="player2Avatar"
+             src="/images/default-avatar.png"
+             class="player-avatar mb-2"
+             alt="Spieler 2"
+             onerror="this.onerror=null; this.src='/images/default-avatar.png';">
         <h5 id="player2Name">Gegner</h5>
         <div class="score-display" id="player2Score">0</div>
         <small>Punkte</small>
-
-        </div>
       </div>
     </div>
   </div>
 
-
-
-  <!-- Frage-Bereich -->
+  <!--
+    ============================================================
+    SECTION: QUESTION CARD
+    - Anzeige der aktuellen Frage + Kategorie
+    - Antwortbuttons A-D
+    - Timer (Balken + Text)
+    ============================================================
+  -->
   <div class="question-card">
     <div class="text-center mb-4">
       <h3 id="questionCategory" class="badge bg-secondary">kategorie</h3>
       <h2 id="questionText" class="mt-4 mb-4">Lade Frage...</h2>
     </div>
 
-
-    <!-- Antwort-Buttons (Grid) -->
+    <!-- Antworten A–D: data-answer wird im JS als "A"/"B"/"C"/"D" verwendet -->
     <div class="answers-grid mb-4">
       <button class="answer-btn btn btn-light" data-answer="A" id="answerA">A: ...</button>
       <button class="answer-btn btn btn-light" data-answer="B" id="answerB">B: ...</button>
       <button class="answer-btn btn btn-light" data-answer="C" id="answerC">C: ...</button>
       <button class="answer-btn btn btn-light" data-answer="D" id="answerD">D: ...</button>
     </div>
-
-
-
 
     <!-- Timer -->
     <div class="timer-bar">
@@ -341,7 +219,13 @@
     </div>
   </div>
 
-  <!-- Kontroll-Buttons -->
+  <!--
+    ============================================================
+    SECTION: CONTROLS
+    - "Antwort absenden": wird erst aktiv, wenn eine Antwort ausgewählt wurde
+    - "Nächste Runde": erscheint nach RoundResult, wenn noch Runden übrig sind
+    ============================================================
+  -->
   <div class="text-center mt-4">
     <button id="submitAnswerBtn" class="btn btn-primary btn-lg px-5" disabled>
       Antwort absenden
@@ -351,7 +235,12 @@
     </button>
   </div>
 
-  <!-- Chat / Log -->
+  <!--
+    ============================================================
+    SECTION: GAME LOG
+    - Kleines Log für Status/Debug (z.B. "Verbunden", "Runde beendet")
+    ============================================================
+  -->
   <div class="card mt-4">
     <div class="card-header">
       <h5 class="mb-0">📝 Spielverlauf</h5>
@@ -362,12 +251,22 @@
   </div>
 </div>
 
-<!-- Countdown Overlay -->
+<!--
+  ============================================================
+  OVERLAY: COUNTDOWN
+  - wird angezeigt, wenn Backend COUNTDOWN-Events sendet
+  ============================================================
+-->
 <div id="countdownOverlay" class="countdown-overlay d-none">
   <div class="countdown-number" id="countdownDisplay">3</div>
 </div>
 
-<!-- Ergebnis Overlay -->
+<!--
+  ============================================================
+  OVERLAY: GAME RESULT
+  - wird nach GAME_END oder nach "gameFinished" eingeblendet
+  ============================================================
+-->
 <div id="gameResultModal" class="game-result-modal d-none">
   <div class="result-card">
     <h1 id="resultTitle" class="mb-4">Spiel beendet!</h1>
@@ -395,290 +294,500 @@
     </div>
   </div>
 </div>
+
 <script>
+  /* =====================================================================
+     JSDOC TYPE DEFINITIONS
+     ---------------------------------------------------------------------
+     Diese Typdefinitionen helfen beim Verständnis der Datenstrukturen,
+     die vom Backend per REST oder WebSocket kommen.
+     ===================================================================== */
+
+  /**
+   * @typedef {Object} Player
+   * @property {number} id
+   * @property {string} username
+   * @property {string} [profileImageUrl]
+   * @property {number} [totalGames]
+   * @property {number} [gamesWon]
+   * @property {number} [gamesLost]
+   * @property {number} [highscore]
+   */
+
+  /**
+   * @typedef {Object} QuestionPublic
+   * @property {number} id
+   * @property {string} category
+   * @property {string} questionText
+   * @property {string} optionA
+   * @property {string} optionB
+   * @property {string} optionC
+   * @property {string} optionD
+   */
+
+  /**
+   * @typedef {Object} Game
+   * @property {number} [id]
+   * @property {number} [gameId]
+   * @property {Player} [player1]
+   * @property {Player} [player2]
+   * @property {string} [category]
+   * @property {number} [scorePlayer1]
+   * @property {number} [scorePlayer2]
+   */
+
+  /**
+   * @typedef {Object} ScoresPayload
+   * @property {number} player1
+   * @property {number} player2
+   */
+
+  /**
+   * @typedef {Object} RoundResultPayload
+   * @property {number} gameId
+   * @property {number} roundNumber
+   * @property {string} correctAnswer
+   * @property {number} player1Points
+   * @property {number} player2Points
+   * @property {string} message
+   * @property {boolean} gameFinished
+   */
+
+  /**
+   * @typedef {Object} TimerStartMessage
+   * @property {"TIMER_START"} type
+   * @property {number} gameId
+   * @property {number} roundNumber
+   * @property {number} timeLimit
+   */
+
+  /**
+   * @typedef {Object} TimerUpdateMessage
+   * @property {"TIMER_UPDATE"} type
+   * @property {number} gameId
+   * @property {number} roundNumber
+   * @property {number} remainingSeconds
+   */
+
   /* =========================
      GLOBAL STATE
   ========================= */
-  let stompClient = null;
-  let currentGame = null;
-  let currentPlayer = null;
-  let currentRound = 1;
-  const TOTAL_ROUNDS = 5;
-  let mySlot = 1;        // 1 oder 2 (player1 oder player2 im Game)
-  let mePlayer = null;   // game.player1 oder game.player2
-  let oppPlayer = null;  // der andere
-  let isPlayer1 = true;
-  let opponentPlayer = null;
-  let didInitialSync = false;
-let didQuestionSyncRound = 0;
 
- let selectedAnswer = null;
+  /** @type {any} STOMP client instance (from stomp.js) */
+  let stompClient = null;
+
+  /** @type {Game|null} Aktuelles Spielobjekt */
+  let currentGame = null;
+
+  /** @type {Player|null} Aktuell eingeloggter Spieler */
+  let currentPlayer = null;
+
+  /** @type {number} Aktuelle Runde (1..TOTAL_ROUNDS) */
+  let currentRound = 1;
+
+  /** @type {number} Anzahl Runden im Spiel (muss zum Backend passen) */
+  const TOTAL_ROUNDS = 5;
+
+  /**
+   * @type {boolean}
+   * true = currentPlayer ist game.player1, false = currentPlayer ist game.player2
+   */
+  let isPlayer1 = true;
+
+  /** @type {Player|null} Gegner-Spielerobjekt (aus currentGame abgeleitet) */
+  let opponentPlayer = null;
+
+  /** @type {"A"|"B"|"C"|"D"|null} aktuell ausgewählte Antwort */
+  let selectedAnswer = null;
+
+  /** @type {boolean} verhindert mehrfaches Absenden pro Runde */
   let answerSent = false;
+
+  /** @type {number|null} wird aktuell nicht genutzt (kann für client-side timer genutzt werden) */
   let timerInterval = null;
+
+  /** @type {number} verbleibende Sekunden für die Runde */
   let timeLeft = 30;
+
+  /** @type {boolean} initialer Sync nur einmal nach WS Connect */
+  let didInitialSync = false;
+
+  /** @type {number} verhindert mehrfaches Frage-Sync pro Runde */
+  let didQuestionSyncRound = 0;
+
+  /** @type {boolean} schützt davor, endGame mehrmals auszuführen */
+  let didEndGame = false;
+
+  /** @type {string} Fallback Avatar */
+  const DEFAULT_AVATAR = "/images/default-avatar.png";
 
   /* =========================
      DOM HELPERS
   ========================= */
+
+  /**
+   * Shortcut: Element per ID holen
+   * @param {string} id
+   * @returns {HTMLElement|null}
+   */
   const $ = id => document.getElementById(id);
+
+  /**
+   * Shortcut: Elements per Selector holen
+   * @param {string} sel
+   * @returns {NodeListOf<HTMLElement>}
+   */
   const $$ = sel => document.querySelectorAll(sel);
-  const show = id => $(id)?.classList.remove('d-none');
-  const hide = id => $(id)?.classList.add('d-none');
-  const setText = (id, text) => { if ($(id)) $(id).textContent = text; };
+
+  /**
+   * Entfernt Bootstrap-Klasse d-none (anzeigen)
+   * @param {string} id
+   * @returns {void}
+   */
+  const show = id => $(id)?.classList.remove("d-none");
+
+  /**
+   * Fügt Bootstrap-Klasse d-none hinzu (verstecken)
+   * @param {string} id
+   * @returns {void}
+   */
+  const hide = id => $(id)?.classList.add("d-none");
+
+  /**
+   * Setzt textContent, falls Element existiert
+   * @param {string} id
+   * @param {string|number} text
+   * @returns {void}
+   */
+  const setText = (id, text) => { const el = $(id); if (el) el.textContent = String(text); };
+
+  /**
+   * Häufig verwendete DOM-Elemente als Cache (kleiner Performance- und Lesbarkeitsgewinn)
+   */
+  const elements = {
+    submitAnswerBtn: $("submitAnswerBtn"),
+    nextRoundBtn: $("nextRoundBtn"),
+    timerProgress: $("timerProgress"),
+    timeLeft: $("timeLeft"),
+
+    player1Score: $("player1Score"),
+    player2Score: $("player2Score"),
+    player1Avatar: $("player1Avatar"),
+    player2Avatar: $("player2Avatar"),
+
+    gameLog: $("gameLog")
+  };
 
   /* =========================
-     DOM ELEMENTS
+     IMAGE HELPERS (DEFAULT)
   ========================= */
-  const elements = {
-    questionText: $('questionText'),
-    submitAnswerBtn: $('submitAnswerBtn'),
-    nextRoundBtn: $('nextRoundBtn'),
-    timerProgress: $('timerProgress'),
-    timeLeft: $('timeLeft'),
 
-    player1Score: $('player1Score'),
-    player2Score: $('player2Score'),
-    player1Name: $('player1Name'),
-    player2Name: $('player2Name'),
-    player1Avatar: $('player1Avatar'),
-    player2Avatar: $('player2Avatar'),
+  /**
+   * Liefert eine Avatar-URL oder das Default-Bild.
+   * @param {string|null|undefined} url
+   * @returns {string}
+   */
+  function safeImg(url) {
+    const u = (url || "").trim();
+    return u ? u : DEFAULT_AVATAR;
+  }
 
-    gameCategory: $('gameCategory'),
-    questionCategory: $('questionCategory'),
-    currentRound: $('currentRound'),
+  /**
+   * Setzt das Avatarbild sicher (inkl. onerror Fallback).
+   * @param {HTMLImageElement|null} imgEl
+   * @param {string|null|undefined} url
+   * @returns {void}
+   */
+  function setAvatar(imgEl, url) {
+    if (!imgEl) return;
+    imgEl.onerror = () => {
+      imgEl.onerror = null;
+      imgEl.src = DEFAULT_AVATAR;
+    };
+    imgEl.src = safeImg(url);
+  }
 
-    opponentAnswerStatus: $('opponentAnswerStatus'),
-    gameLog: $('gameLog'),
+  /* =========================
+     GAME ID HELPERS (id vs gameId)
+  ========================= */
 
-    countdownOverlay: $('countdownOverlay'),
-    countdownDisplay: $('countdownDisplay'),
+  /**
+   * Normalisiert Game-ID, da manche Payloads id oder gameId enthalten.
+   * @param {Game|null|undefined} g
+   * @returns {number|null}
+   */
+  function getGameIdFromObject(g) {
+    return g?.id ?? g?.gameId ?? null;
+  }
 
-    gameResultModal: $('gameResultModal'),
-    resultTitle: $('resultTitle'),
-    resultMessage: $('resultMessage'),
-    resultIcon: $('resultIcon'),
-    finalScorePlayer1: $('finalScorePlayer1'),
-    finalScorePlayer2: $('finalScorePlayer2')
-  };
+  /**
+   * Liefert die Game-ID:
+   * - Priorität 1: URL query (?gameId=...)
+   * - Priorität 2: currentGame Objekt
+   * - Priorität 3: localStorage.currentGame
+   * @returns {string|number|null}
+   */
+  function getGameId() {
+    const urlId = new URLSearchParams(location.search).get("gameId");
+    if (urlId) return urlId;
+
+    const id = getGameIdFromObject(currentGame);
+    if (id) return id;
+
+    const saved = localStorage.getItem("currentGame");
+    if (saved) {
+      try {
+        const g = JSON.parse(saved);
+        return getGameIdFromObject(g);
+      } catch {}
+    }
+    return null;
+  }
 
   /* =========================
      INIT
   ========================= */
+
+  // Startpunkt: wenn DOM geladen ist -> Daten laden
   window.onload = () => loadGameData();
 
+  /**
+   * Lädt Player/Game aus localStorage/Backend und startet WebSocket + UI Events.
+   * @returns {Promise<void>}
+   */
   async function loadGameData() {
-    currentPlayer = JSON.parse(localStorage.getItem('currentPlayer'));
+    currentPlayer = JSON.parse(localStorage.getItem("currentPlayer"));
     if (!currentPlayer) return redirectLobby();
 
-    setText('player1Name', currentPlayer.username);
-    if (currentPlayer.profileImageUrl) {
-      elements.player1Avatar.src = currentPlayer.profileImageUrl;
+    setText("player1Name", currentPlayer.username || "Du");
+    setAvatar(elements.player1Avatar, currentPlayer.profileImageUrl);
+
+    const gameId = new URLSearchParams(location.search).get("gameId");
+    if (gameId) await fetchGameData(gameId);
+    else loadGameFromStorage();
+
+    const id = getGameId();
+    if (!id) {
+      console.error("❌ Keine Game-ID gefunden (id/gameId). currentGame=", currentGame);
+      return redirectLobby();
     }
 
-    const gameId = new URLSearchParams(location.search).get('gameId');
-    if (gameId) {
-      await fetchGameData(gameId);
-    } else {
-      loadGameFromStorage();
-    }
-
-    if (currentGame?.id) {
-      connectWebSocket();
-      setupEventListeners();
-    }
+    connectWebSocket();
+    setupEventListeners();
   }
 
+  /**
+   * Navigiert zurück zur Lobby (leicht verzögert, um UI nicht abrupt zu cutten).
+   * @returns {void}
+   */
   function redirectLobby() {
-    setTimeout(() => location.href = '/lobby.html', 2000);
+    setTimeout(() => (location.href = "/lobby.html"), 800);
   }
 
+  /**
+   * Lädt currentGame aus localStorage (Fallback, wenn kein gameId in URL).
+   * @returns {void}
+   */
   function loadGameFromStorage() {
-  const saved = localStorage.getItem('currentGame');
-  if (!saved) return redirectLobby();
+    const saved = localStorage.getItem("currentGame");
+    if (!saved) return redirectLobby();
 
-  currentGame = JSON.parse(saved);
-
-  updateGameDisplay();          // beibehalten
-  applyPlayerRolesFromGame();   // danach Rollen richtig setzen
-}
+    currentGame = JSON.parse(saved);
+    updateGameDisplay();
+    applyPlayerRolesFromGame();
+  }
 
   /* =========================
      GAME FETCH
   ========================= */
+
+  /**
+   * Lädt Game-Daten vom Backend und aktualisiert localStorage + UI.
+   * @param {string|number} gameId
+   * @returns {Promise<void>}
+   */
   async function fetchGameData(gameId) {
-  try {
-    const res = await fetch(`/api/games/${gameId}`);
-    currentGame = await res.json();
-    localStorage.setItem('currentGame', JSON.stringify(currentGame));
+    try {
+      const res = await fetch(`/api/games/${gameId}`, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
 
-    updateGameDisplay();          // beibehalten
-    applyPlayerRolesFromGame();   // danach Rollen richtig setzen
-  } catch (e) {
-    redirectLobby();
+      currentGame = await res.json();
+      localStorage.setItem("currentGame", JSON.stringify(currentGame));
+
+      updateGameDisplay();
+      applyPlayerRolesFromGame();
+    } catch (e) {
+      console.error("❌ fetchGameData:", e);
+      redirectLobby();
+    }
   }
-}
 
-async function syncFirstQuestionIfMissing(gameId) {
-  const qText = $('questionText')?.textContent?.trim() || '';
-  const aText = $('answerA')?.textContent?.trim() || '';
-
-  const missing =
-    qText === '' || qText.includes('???') || qText.includes('Lade') ||
-    aText === '' || aText.includes('...');
-
-  if (!missing) return;
-
-  const rounds = await fetch(`/api/games/${gameId}/rounds`, { cache: 'no-store' }).then(r => r.json());
-
-  // letzte Runde nehmen (max roundNumber)
-  const last = rounds.reduce((best, r) => (!best || r.roundNumber > best.roundNumber ? r : best), null);
-
-  if (last?.question) {
-    currentRound = last.roundNumber;
-    setText('currentRound', `Runde ${currentRound}/${TOTAL_ROUNDS}`);
-    displayQuestion(last.question);
+  /**
+   * Heuristik: erkennt ob im UI noch keine echte Frage/Antworttexte stehen.
+   * @returns {boolean}
+   */
+  function questionLooksMissing() {
+    const qText = $("questionText")?.textContent?.trim() || "";
+    const aText = $("answerA")?.textContent?.trim() || "";
+    return (
+      qText === "" || qText.includes("???") || qText.includes("Lade") ||
+      aText === "" || aText.includes("...")
+    );
   }
-}
 
+  /**
+   * Wenn nach Refresh keine Frage im UI ist:
+   * - holt alle Runden
+   * - nimmt die "neueste" Runde (höchste roundNumber)
+   * - rendert die Frage dieser Runde
+   *
+   * @param {string|number} gameId
+   * @returns {Promise<void>}
+   */
+  async function syncFirstQuestionIfMissing(gameId) {
+    if (!questionLooksMissing()) return;
+
+    const rounds = await fetch(`/api/games/${gameId}/rounds`, { cache: "no-store" }).then(r => r.json());
+    const last = rounds.reduce((best, r) => (!best || r.roundNumber > best.roundNumber ? r : best), null);
+
+    if (last?.question) {
+      currentRound = last.roundNumber;
+      setText("currentRound", `Runde ${currentRound}/${TOTAL_ROUNDS}`);
+      displayQuestion(last.question);
+    }
+  }
 
   /* =========================
      WEBSOCKET
   ========================= */
+
+  /**
+   * Baut die WebSocket-Verbindung auf (SockJS + STOMP) und subscribed danach auf Topics.
+   * @returns {void}
+   */
   function connectWebSocket() {
-    const socket = new SockJS('/quiz-websocket');
+    const socket = new SockJS("/quiz-websocket");
     stompClient = Stomp.over(socket);
-    stompClient.debug = msg => console.log('STOMP:', msg);
+    stompClient.debug = null;
 
     stompClient.connect({}, () => {
-      addGameLog('✅ Verbunden');
+      addGameLog("✅ Verbunden");
       subscribeAll();
     }, () => setTimeout(connectWebSocket, 5000));
   }
 
+  /**
+   * Helper: subscribed auf Topic und gibt geparstes JSON an handler.
+   * @param {string} topic
+   * @param {(data:any)=>void} handler
+   * @returns {any}
+   */
   const subscribe = (topic, handler) =>
     stompClient.subscribe(topic, msg => handler(JSON.parse(msg.body)));
 
- function subscribeAll() {
-  const id = currentGame.id;
-  console.log('🔌 Subscriptions werden eingerichtet für Spiel:', id);
+  /**
+   * Registriert alle notwendigen Subscriptions für dieses Spiel.
+   * @returns {void}
+   */
+  function subscribeAll() {
+    const id = getGameId();
+    if (!id) return console.error("❌ subscribeAll: keine Game-ID");
 
-  subscribe(`/topic/game/${id}`, (data) => {
-    console.log('📨 RAW MESSAGE EMPFANGEN:', data);
+    console.log("🔌 Subscriptions für Spiel:", id);
 
-    console.log("MSG", data.type, {
-    roundNumber: data.roundNumber,
-    roundNumberGameStart: data.round?.number,
-    hasQuestion: !!data.question,
-    hasRoundQuestion: !!data.round?.question
-  });
+    subscribe(`/topic/game/${id}`, handleGameMessage);
+    subscribe(`/topic/game/${id}/timer`, handleTimerMessage);
 
-    handleGameMessage(data);
-  });
+    subscribe(`/topic/game/${id}/countdown`, d => {
+      if (d.type === "COUNTDOWN") showCountdown(d.seconds);
+    });
 
-  subscribe(`/topic/game/${id}/timer`, handleTimerMessage);
+    subscribe(`/topic/game/${id}/result`, d => {
+      showRoundResult(d.result);
+      updateScores(d.scores);
 
-  subscribe(`/topic/game/${id}/countdown`, d => {
-    if (d.type === 'COUNTDOWN') showCountdown(d.seconds);
-  });
+      if (d.scores) {
+        currentGame.scorePlayer1 = d.scores.player1;
+        currentGame.scorePlayer2 = d.scores.player2;
+        localStorage.setItem("currentGame", JSON.stringify(currentGame));
+      }
 
-  subscribe(`/topic/game/${id}/result`, d => {
-    showRoundResult(d.result);
-    updateScores(d.scores);
+      if (d?.result?.gameFinished === true && !didEndGame) {
+        didEndGame = true;
+        endGame({ scores: d.scores });
+      }
+    });
 
-    // ✅ Scores lokal speichern (für Reload)
-    if (d.scores) {
-      currentGame.scorePlayer1 = d.scores.player1;
-      currentGame.scorePlayer2 = d.scores.player2;
-      localStorage.setItem("currentGame", JSON.stringify(currentGame));
+    if (!didInitialSync) {
+      didInitialSync = true;
+      applyPlayerRolesFromGame();
+      syncFirstQuestionIfMissing(id);
     }
-
-
-    if (d?.result?.gameFinished === true && !didEndGame) {
-  didEndGame = true;
-  endGame({ scores: d.scores });
-}
-  });
-
-  if (!didInitialSync) {
-  didInitialSync = true;
-
-  // Rollen + Scores setzen
-  applyPlayerRolesFromGame();
-
-  // falls erste Frage unvollständig: aus /rounds nachziehen
-  syncFirstQuestionIfMissing(id);
-}
-
-}
-
+  }
 
   /* =========================
      TIMER
   ========================= */
-  function startTimer(seconds = 30) {
-    stopTimer();
-    timeLeft = seconds;
-    updateTimer();
 
-    timerInterval = setInterval(() => {
-      if (--timeLeft <= 0) return timeOut();
-      updateTimer();
-    }, 1000);
-  }
-
+  /**
+   * Aktualisiert Timer-Text + Progressbar.
+   * (Hinweis: Progress basiert auf 30s fix. Für variable Limits müsste man skalieren.)
+   * @returns {void}
+   */
   function updateTimer() {
-    setText('timeLeft', timeLeft);
+    setText("timeLeft", timeLeft);
     elements.timerProgress.style.width = `${(timeLeft / 30) * 100}%`;
   }
 
+  /**
+   * Stoppt ggf. einen clientseitigen Timer (derzeit nicht aktiv genutzt).
+   * @returns {void}
+   */
   function stopTimer() {
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = null;
   }
 
-  function timeOut() {
-  stopTimer();
-  if (!answerSent) sendAnswerToServer('TIMEOUT');
-}
+  /**
+   * Verarbeitet TIMER_START / TIMER_UPDATE.
+   * @param {TimerStartMessage|TimerUpdateMessage|any} data
+   * @returns {void}
+   */
+  function handleTimerMessage(data) {
+    if (!data) return;
 
-function handleTimerMessage(data) {
-  if (!data) return;
+    if (data.type === "TIMER_START") {
+      timeLeft = data.timeLimit ?? 30;
+      updateTimer();
+      return;
+    }
 
-  // Manche Server schicken nur TIMER_UPDATE, ohne TIMER_START
-  if (data.type === 'TIMER_START') {
-    timeLeft = data.timeLimit ?? 30;
-    updateTimer();
-    return;
-  }
-if (data.type === 'TIMER_UPDATE') {
-  timeLeft = Number(data.remainingSeconds ?? timeLeft);
-  updateTimer();
+    if (data.type === "TIMER_UPDATE") {
+      timeLeft = Number(data.remainingSeconds ?? timeLeft);
+      updateTimer();
 
-  // Wenn Timer läuft, aber Frage/Antworten leer sind: 1x pro Runde nachladen
-  if (didQuestionSyncRound !== (data.roundNumber ?? 0)) {
-    const qText = document.getElementById('questionText')?.textContent?.trim() || '';
-    const aText = document.getElementById('answerA')?.textContent?.trim() || '';
+      const rn = data.roundNumber ?? 0;
+      const id = getGameId();
 
-    const questionMissing =
-      qText === '' || qText.includes('Lade') ||
-      aText === '' || aText.includes('...');
-
-    if (questionMissing && currentGame?.id) {
-      didQuestionSyncRound = data.roundNumber ?? 0;
-      fetchGameData(currentGame.id); // holt Game-Stand erneut
+      // Fallback: wenn Frage fehlt, hole Game frisch (max. 1x pro Runde)
+      if (didQuestionSyncRound !== rn && questionLooksMissing() && id) {
+        didQuestionSyncRound = rn;
+        fetchGameData(id);
+      }
     }
   }
-}
-
-
-}
-
 
   /* =========================
      GAME FLOW
   ========================= */
+
+  /**
+   * Router für Messages vom Game-Topic.
+   * @param {any} data
+   * @returns {void}
+   */
   function handleGameMessage(data) {
-    console.log('📨 NACHRICHT EMPFANGEN:', data.type, data);
+    console.log("📨", data.type, data);
 
     const handlers = {
       GAME_START: () => showGameStart(data),
@@ -686,434 +795,352 @@ if (data.type === 'TIMER_UPDATE') {
       OPPONENT_ANSWERED: opponentAnswered,
       GAME_END: () => endGame(data)
     };
+
     handlers[data.type]?.();
   }
 
+  /**
+   * Start einer neuen Runde:
+   * - UI reset
+   * - Runde setzen
+   * - Frage anzeigen (oder fallback fetch)
+   *
+   * @param {any} data
+   * @returns {void}
+   */
   function startNewRound(data) {
-  resetRound();
-  currentRound = data.roundNumber || currentRound;
-  setText('currentRound', `Runde ${currentRound}/${TOTAL_ROUNDS}`);
+    resetRound();
+    currentRound = data.roundNumber || currentRound;
+    setText("currentRound", `Runde ${currentRound}/${TOTAL_ROUNDS}`);
 
-  const q = data.question || data.round?.question;
-  if (q) {
-    displayQuestion(q);
-  } else {
-    setText('questionText', 'Lade Frage...');
-    // Fallback: hole aktuellen Stand vom Server
-    fetchGameData(currentGame.id);
+    const q = data.question || data.round?.question;
+    if (q) displayQuestion(q);
+    else {
+      setText("questionText", "Lade Frage...");
+      const id = getGameId();
+      if (id) fetchGameData(id);
+    }
   }
-}
 
-
+  /**
+   * Rendert eine Frage in die UI (ohne korrekte Antwort).
+   * @param {QuestionPublic} q
+   * @returns {void}
+   */
   function displayQuestion(q) {
-    console.log('🔍 DEBUG displayQuestion:', q);
-    console.log('   questionText:', q.questionText);
-    console.log('   category:', q.category);
-    console.log('   optionA:', q.optionA);
-    console.log('   optionB:', q.optionB);
-    console.log('   optionC:', q.optionC);
-    console.log('   optionD:', q.optionD);
+    setText("questionText", q.questionText || "??? Keine Frage geladen ???");
+    setText("questionCategory", q.category || "Kategorie");
 
-    setText('questionText', q.questionText || '??? Keine Frage geladen ???');
-    setText('questionCategory', q.category);
-
-    ['A','B','C','D'].forEach(l =>
-            setText(`answer${l}`, `${l}: ${q['option'+l]}`)
-    );
-
+    ["A","B","C","D"].forEach(l => setText(`answer${l}`, `${l}: ${q["option"+l]}`));
     elements.submitAnswerBtn.disabled = true;
   }
 
+  /**
+   * Markiert eine Antwort als ausgewählt und aktiviert "Absenden".
+   * @param {"A"|"B"|"C"|"D"} letter
+   * @returns {void}
+   */
   function selectAnswer(letter) {
     selectedAnswer = letter;
     elements.submitAnswerBtn.disabled = false;
 
-    $$('.answer-btn').forEach(btn => {
-      btn.classList.toggle('selected', btn.dataset.answer === letter);
-    });
+    $$(".answer-btn").forEach(btn =>
+      btn.classList.toggle("selected", btn.dataset.answer === letter)
+    );
   }
 
+  /**
+   * Sendet eine Antwort an den Server (nur 1x pro Runde).
+   * @param {"A"|"B"|"C"|"D"} answer
+   * @returns {void}
+   */
   function sendAnswerToServer(answer) {
-  if (answerSent) return;   // ✅ blockt doppelte Sends
-  answerSent = true;
+    if (answerSent) return;
+    answerSent = true;
 
-  stompClient.send('/app/game.answer', {}, JSON.stringify({
-    gameId: currentGame.id,
-    playerId: currentPlayer.id,
-    roundNumber: currentRound,
-    answer
-  }));
+    stompClient.send("/app/game.answer", {}, JSON.stringify({
+      gameId: getGameId(),
+      playerId: currentPlayer.id,
+      roundNumber: currentRound,
+      answer
+    }));
 
-  elements.submitAnswerBtn.disabled = true;
-  $$('.answer-btn').forEach(b => b.disabled = true);
-}
-
+    elements.submitAnswerBtn.disabled = true;
+    $$(".answer-btn").forEach(b => b.disabled = true);
+  }
 
   /* =========================
      RESULTS
   ========================= */
+
+  /**
+   * Markiert Buttons korrekt/falsch, stoppt Timer und zeigt ggf. "Next round".
+   * @param {RoundResultPayload} result
+   * @returns {void}
+   */
   function showRoundResult(result) {
     if (!result) return;
 
-    console.log('📊 Zeige Ergebnis:', result);
+    const correctLetter = result.correctAnswer;
 
-    // Backend sendet korrekte Antwort als Buchstabe ("A", "B", "C", "D")
-    const correctLetter = result.correctAnswer; // z.B. "B"
-
-    // Markiere richtige und falsche Antworten
-    $$('.answer-btn').forEach(btn => {
-        const a = btn.dataset.answer; // "A", "B", "C", "D"
-
-        if (a === correctLetter) {
-            btn.classList.add('correct');
-            btn.classList.remove('incorrect');
-        } else if (a === selectedAnswer && a !== correctLetter) {
-            btn.classList.add('incorrect');
-            btn.classList.remove('correct');
-        } else {
-            btn.classList.remove('correct', 'incorrect');
-        }
-        btn.disabled = true;
+    $$(".answer-btn").forEach(btn => {
+      const a = btn.dataset.answer;
+      btn.classList.toggle("correct", a === correctLetter);
+      btn.classList.toggle("incorrect", a === selectedAnswer && a !== correctLetter);
+      btn.disabled = true;
     });
 
-    // Animation für Punkte-Update
-    const myPoints = (mySlot === 1) ? result.player1Points : result.player2Points;
-if (myPoints > 0) animatePoints(myPoints, true);
-
-
     stopTimer();
-    if (currentRound < TOTAL_ROUNDS) {
-        show('nextRoundBtn');
-    }
-
+    if (currentRound < TOTAL_ROUNDS) show("nextRoundBtn");
     addGameLog(result.message || `Runde ${currentRound} beendet!`);
-}
+  }
 
+  /**
+   * Trigger für nächste Runde (Backend startet neue Runde und broadcastet ROUND_START).
+   * @returns {void}
+   */
   function nextRound() {
-    hide('nextRoundBtn');
-    stompClient.send('/app/game.nextRound', {}, JSON.stringify({
-      gameId: currentGame.id,
+    hide("nextRoundBtn");
+    stompClient.send("/app/game.nextRound", {}, JSON.stringify({
+      gameId: getGameId(),
       roundNumber: currentRound + 1
     }));
   }
 
-function endGame(data) {
-  stopTimer();
+  /**
+   * Zeigt Spielende-Overlay inkl. Winner-Status.
+   * @param {{scores?: ScoresPayload}|any} data
+   * @returns {void}
+   */
+  function endGame(data) {
+    stopTimer();
+    if (data?.scores) updateScores(data.scores);
 
-  if (data?.scores) updateScores(data.scores);
+    const my = +$("player1Score")?.textContent || 0;
+    const opp = +$("player2Score")?.textContent || 0;
 
-  const my = +elements.player1Score.textContent || 0;
-  const opp = +elements.player2Score.textContent || 0;
+    setText("finalScorePlayer1", my);
+    setText("finalScorePlayer2", opp);
 
-  setText('finalScorePlayer1', my);
-  setText('finalScorePlayer2', opp);
+    if (my > opp) {
+      setText("resultTitle", "Gewonnen!");
+      setText("resultIcon", "🏆");
+      setText("resultMessage", "Stark gespielt!");
+    } else if (opp > my) {
+      setText("resultTitle", "Verloren");
+      setText("resultIcon", "😔");
+      setText("resultMessage", "Kopf hoch – nächstes Spiel!");
+    } else {
+      setText("resultTitle", "Unentschieden");
+      setText("resultIcon", "🤝");
+      setText("resultMessage", "Gutes Match!");
+    }
 
-  if (my > opp) {
-    setText('resultTitle', 'Gewonnen!');
-    setText('resultIcon', '🏆');
-    setText('resultMessage', 'Stark gespielt!');
-  } else if (opp > my) {
-    setText('resultTitle', 'Verloren');
-    setText('resultIcon', '😔');
-    setText('resultMessage', 'Kopf hoch – nächstes Spiel!');
-  } else {
-    setText('resultTitle', 'Unentschieden');
-    setText('resultIcon', '🤝');
-    setText('resultMessage', 'Gutes Match!');
+    show("gameResultModal");
   }
-
-  show('gameResultModal');
-}
-
 
   /* =========================
      UI HELPERS
   ========================= */
+
+  /**
+   * Optionaler UI-Indikator: Gegner hat geantwortet.
+   * Hinweis: Element existiert in dieser HTML aktuell nicht, daher null-check.
+   * @returns {void}
+   */
   function opponentAnswered() {
-  setText('opponentAnswerStatus', '✓');
-  elements.opponentAnswerStatus.classList.add('answered');
+    const el = $("opponentAnswerStatus");
+    if (!el) return;
+    el.textContent = "✓";
+    el.classList.add("answered");
   }
 
- function updateScores(scores = {}) {
-  if (!scores) return;
+  /**
+   * Aktualisiert die Score-Anzeige (myScore links, opponent rechts).
+   * @param {ScoresPayload|any} scores
+   * @returns {void}
+   */
+  function updateScores(scores = {}) {
+    if (!scores) return;
 
-  const my = isPlayer1 ? scores.player1 : scores.player2;
-  const opp = isPlayer1 ? scores.player2 : scores.player1;
+    const my = isPlayer1 ? scores.player1 : scores.player2;
+    const opp = isPlayer1 ? scores.player2 : scores.player1;
 
-  if (my !== undefined) setText('player1Score', my);
-  if (opp !== undefined) setText('player2Score', opp);
-}
+    if (my !== undefined) setText("player1Score", my);
+    if (opp !== undefined) setText("player2Score", opp);
+  }
 
-
-
+  /**
+   * Zeigt/aktualisiert den Countdown-Overlay.
+   * @param {number} seconds
+   * @returns {void}
+   */
   function showCountdown(seconds) {
-    setText('countdownDisplay', seconds);
-    show('countdownOverlay');
-    if (seconds <= 0) setTimeout(() => hide('countdownOverlay'), 1000);
+    setText("countdownDisplay", seconds);
+    show("countdownOverlay");
+    if (seconds <= 0) setTimeout(() => hide("countdownOverlay"), 1000);
   }
 
+  /**
+   * Verarbeitet GAME_START: Kategorie, Gegnerdaten, erste Frage (falls vorhanden).
+   * @param {any} data
+   * @returns {void}
+   */
   function showGameStart(data) {
-    console.log('🎮 DEBUG showGameStart AUFGERUFEN');
-    console.log('   Komplette data:', JSON.stringify(data, null, 2));
-    console.log('   data.type:', data.type);
-    console.log('   data.round:', data.round);
-    console.log('   data.round?.question:', data.round?.question);
+    setText("gameCategory", data.category || "Kategorie");
 
-    setText('gameCategory', data.category);
-    if (data.player2) {
-      setText('player2Name', data.player2.username);
-      if (data.player2.profileImageUrl) {
-        elements.player2Avatar.src = data.player2.profileImageUrl;
-      }
+    const p2 = data.player2 || data.opponent;
+    if (p2) {
+      setText("player2Name", p2.username || "Gegner");
+      setAvatar(elements.player2Avatar, p2.profileImageUrl);
     }
 
-    // Erste Frage anzeigen, wenn im GAME_START enthalten
-const q = data.question || data.round?.question;
-if (q) {
-  currentRound = 1;
-  setText('currentRound', `Runde ${currentRound}/${TOTAL_ROUNDS}`);
-  displayQuestion(q);
-} else {
-  // Wenn nicht enthalten: lieber warten, bis ROUND_START kommt
-  console.warn('⚠️ GAME_START ohne Frage – warte auf ROUND_START...');
-}
-
+    const q = data.question || data.round?.question;
+    if (q) {
+      currentRound = 1;
+      setText("currentRound", `Runde ${currentRound}/${TOTAL_ROUNDS}`);
+      displayQuestion(q);
+    } else {
+      console.warn("⚠️ GAME_START ohne Frage – warte auf ROUND_START...");
+    }
   }
 
   /* =========================
      RESET & EVENTS
   ========================= */
 
+  /**
+   * Reset des UI-Zustands für eine neue Runde.
+   * @returns {void}
+   */
   function resetRound() {
-  selectedAnswer = null;
-  answerSent = false;
-  hide('nextRoundBtn');
-  setText('opponentAnswerStatus', '?');
-  stopTimer();
+    selectedAnswer = null;
+    answerSent = false;
+    hide("nextRoundBtn");
+    stopTimer();
 
-  $$('.answer-btn').forEach(btn => {
-    btn.className = 'answer-btn';
-    btn.disabled = false;
-  });
+    $$(".answer-btn").forEach(btn => {
+      btn.className = "answer-btn btn btn-light";
+      btn.disabled = false;
+    });
 
-  elements.submitAnswerBtn.disabled = true;
-}
+    elements.submitAnswerBtn.disabled = true;
+  }
 
-
+  /**
+   * Verknüpft Buttons mit JS-Handlers.
+   * @returns {void}
+   */
   function setupEventListeners() {
-    $$('.answer-btn').forEach(btn =>
-      btn.addEventListener('click', () => selectAnswer(btn.dataset.answer))
+    $$(".answer-btn").forEach(btn =>
+      btn.addEventListener("click", () => selectAnswer(btn.dataset.answer))
     );
 
-    elements.submitAnswerBtn.addEventListener('click', () =>
-      selectedAnswer ? sendAnswerToServer(selectedAnswer) : null
-    );
+    elements.submitAnswerBtn.addEventListener("click", () => {
+      if (selectedAnswer) sendAnswerToServer(selectedAnswer);
+    });
 
-    elements.nextRoundBtn.addEventListener('click', nextRound);
+    elements.nextRoundBtn.addEventListener("click", nextRound);
   }
 
   /* =========================
      DISPLAY & LOG
   ========================= */
 
-function updateGameDisplay() {
-  if (!currentGame || !currentPlayer) return;
+  /**
+   * Aktualisiert Header-Anzeige (Spieler, Avatare, Kategorie).
+   * @returns {void}
+   */
+  function updateGameDisplay() {
+    if (!currentGame || !currentPlayer) return;
 
-  const p1 = currentGame.player1;
-  const p2 = currentGame.player2;
+    const p1 = currentGame.player1;
+    const p2 = currentGame.player2;
 
-  // Wer bin ich?
-  const iAmP1 = p1 && p1.id === currentPlayer.id;
-  const me = iAmP1 ? p1 : p2;
-  const opp = iAmP1 ? p2 : p1;
+    const iAmP1 = p1 && p1.id === currentPlayer.id;
+    const me = iAmP1 ? p1 : p2;
+    const opp = iAmP1 ? p2 : p1;
 
-  // Anzeige: links = ich, rechts = Gegner
-  if (me) {
-    setText('player1Name', me.username);
-    if (me.profileImageUrl) elements.player1Avatar.src = me.profileImageUrl;
+    if (me) {
+      setText("player1Name", me.username);
+      setAvatar(elements.player1Avatar, me.profileImageUrl);
+    } else {
+      setText("player1Name", currentPlayer.username || "Du");
+      setAvatar(elements.player1Avatar, currentPlayer.profileImageUrl);
+    }
+
+    if (opp) {
+      setText("player2Name", opp.username || "Gegner");
+      setAvatar(elements.player2Avatar, opp.profileImageUrl);
+    } else {
+      setText("player2Name", "Warte auf Gegner...");
+      setAvatar(elements.player2Avatar, null);
+    }
+
+    setText("gameCategory", currentGame.category || "Kategorie");
   }
 
-  if (opp) {
-    setText('player2Name', opp.username);
-    if (opp.profileImageUrl) elements.player2Avatar.src = opp.profileImageUrl;
-  } else {
-    setText('player2Name', 'Warte auf Gegner...');
+  /**
+   * Bestimmt Rollen (bin ich player1?) und setzt Scores korrekt.
+   * @returns {void}
+   */
+  function applyPlayerRolesFromGame() {
+    if (!currentGame?.player1 || !currentGame?.player2 || !currentPlayer?.id) return;
+
+    isPlayer1 = currentGame.player1.id === currentPlayer.id;
+    opponentPlayer = isPlayer1 ? currentGame.player2 : currentGame.player1;
+
+    setText("player1Name", currentPlayer.username || "Du");
+    setAvatar(elements.player1Avatar, currentPlayer.profileImageUrl);
+
+    setText("player2Name", opponentPlayer?.username || "Gegner");
+    setAvatar(elements.player2Avatar, opponentPlayer?.profileImageUrl);
+
+    const myScore = isPlayer1 ? currentGame.scorePlayer1 : currentGame.scorePlayer2;
+    const oppScore = isPlayer1 ? currentGame.scorePlayer2 : currentGame.scorePlayer1;
+
+    if (myScore != null) setText("player1Score", myScore);
+    if (oppScore != null) setText("player2Score", oppScore);
   }
 
-  setText('gameCategory', currentGame.category);
-}
-
-
-
-function applyPlayerRolesFromGame() {
-  if (!currentGame?.player1?.id || !currentGame?.player2?.id || !currentPlayer?.id) return;
-
-  isPlayer1 = currentGame.player1.id === currentPlayer.id;
-  opponentPlayer = isPlayer1 ? currentGame.player2 : currentGame.player1;
-
-  // links ist IMMER "Du"
-  setText('player1Name', currentPlayer.username);
-  if (currentPlayer.profileImageUrl) elements.player1Avatar.src = currentPlayer.profileImageUrl;
-
-  // rechts ist IMMER "Gegner"
-  setText('player2Name', opponentPlayer.username);
-  if (opponentPlayer.profileImageUrl) elements.player2Avatar.src = opponentPlayer.profileImageUrl;
-
-  // initiale Scores korrekt mappen (falls vorhanden)
-  const myScore = isPlayer1 ? currentGame.scorePlayer1 : currentGame.scorePlayer2;
-  const oppScore = isPlayer1 ? currentGame.scorePlayer2 : currentGame.scorePlayer1;
-
-  if (myScore != null) setText('player1Score', myScore);
-  if (oppScore != null) setText('player2Score', oppScore);
-}
-
-
-
-
+  /**
+   * Schreibt eine Nachricht in das GameLog (mit Uhrzeit) und scrollt nach unten.
+   * @param {string} message
+   * @returns {void}
+   */
   function addGameLog(message) {
-    const div = document.createElement('div');
+    const div = document.createElement("div");
     div.innerHTML = `<small>[${new Date().toLocaleTimeString()}]</small> ${message}`;
     elements.gameLog.appendChild(div);
     elements.gameLog.scrollTop = elements.gameLog.scrollHeight;
   }
-function handleAnswerFeedback(data) {
-    console.log('📝 Antwort-Feedback:', data);
 
-    if (!data) return;
+  /* =========================
+     NAV
+  ========================= */
 
-    // WICHTIG: Rufe die visuelle Feedback-Funktion auf!
-    showAnswerResult(
-        data.isCorrect,          // boolean
-        data.correctAnswer,      // string
-        data.givenAnswer,        // string
-        data.points || 0         // number
-    );
+  /**
+   * Zurück zur Lobby: Game-Status aus localStorage entfernen.
+   * @returns {void}
+   */
+  function returnToLobby() {
+    localStorage.removeItem("currentGame");
+    localStorage.removeItem("autoJoinCategory");
+    location.href = "/lobby.html";
+  }
 
-    // Zeige Feedback an
-    const message = data.message || (data.isCorrect ? "✅ Richtig!" : "❌ Falsch!");
-    addGameLog(message);
-
-    if (data.correctAnswer && data.givenAnswer) {
-        addGameLog(`Richtige Antwort: ${data.correctAnswer}`);
-        addGameLog(`Deine Antwort: ${data.givenAnswer}`);
-    }
-
-    if (data.points !== undefined) {
-        addGameLog(`Punkte: +${data.points}`);
-    }
-}
-
-function handleOpponentFeedback(data) {
-    console.log('👥 Gegner-Feedback:', data);
-
-    if (!data) return;
-
-    const message = data.message ||
-        (data.opponentCorrect ? "Gegner hat richtig geantwortet" : "Gegner hat falsch geantwortet");
-
-    addGameLog(message);
-
-    if (data.opponentPoints !== undefined) {
-        addGameLog(`Gegner Punkte: +${data.opponentPoints}`);
-    }
-}
-
-function handleUserMessage(data) {
-    console.log('📨 User-Nachricht:', data);
-
-    if (!data || !data.type) return;
-
-    switch(data.type) {
-        case 'ANSWER_CONFIRMED':
-            addGameLog('✅ Antwort bestätigt: ' + (data.message || ''));
-            break;
-        case 'OPPONENT_ANSWERED':
-            opponentAnswered();
-            break;
-        case 'ANSWER_FEEDBACK':
-            handleAnswerFeedback(data);
-            break;
-        case 'OPPONENT_ANSWER_FEEDBACK':
-            handleOpponentFeedback(data);
-            break;
-    }
-}
-
- function showAnswerResult(isCorrect, correctAnswer, givenAnswer, points) {
-    // Richtige/Falsche Antwort visuell anzeigen
-    document.querySelectorAll('.answer-btn').forEach(btn => {
-        const btnAnswer = btn.getAttribute('data-answer');
-        const btnText = btn.textContent;
-
-        // Finde die richtige Antwort
-        const correctLetter = getLetterForAnswer(correctAnswer);
-
-        if (btnAnswer === correctLetter) {
-            btn.classList.add('correct');
-        } else if (btnAnswer === givenAnswer && !isCorrect) {
-            btn.classList.add('incorrect');
-        }
-    });
-
-    // Punkte-Animation
-    if (points > 0) {
-        animatePoints(points);
-    }
-}
-
-function getLetterForAnswer(answerText) {
-    // Backend sendet korrekte Antwort als BUCHSTABE ("A", "B", "C", "D")
-    // NICHT als vollständigen Text ("Paris")
-    // Also einfach den Buchstaben zurückgeben
-    if (answerText && ['A','B','C','D'].includes(answerText.toUpperCase())) {
-        return answerText.toUpperCase();
-    }
-
-    // Fallback: Versuche aus dem Text den Buchstaben zu extrahieren
-    const buttons = document.querySelectorAll('.answer-btn');
-    for (const btn of buttons) {
-        const text = btn.textContent;
-        // Prüfe ob der Text die Antwort enthält
-        if (text.includes(answerText)) {
-            return btn.getAttribute('data-answer');
-        }
-    }
-    return null;
-}
-
-function animatePoints(points, isPlayer1 = true) {
-  const scoreElement = isPlayer1 ? elements.player1Score : elements.player2Score;
-
-  // NICHT den Score neu berechnen – nur Animation
-  console.log(`💰 Animation: +${points}`);
-
-  scoreElement.style.transition = 'all 0.3s ease';
-  scoreElement.style.transform = 'scale(1.3)';
-  scoreElement.style.color = points > 0 ? '#1cc88a' : '#e74a3b';
-
-  setTimeout(() => {
-    scoreElement.style.transform = 'scale(1)';
-    scoreElement.style.color = '';
-  }, 300);
-}
-
- function returnToLobby() {
-  localStorage.removeItem("currentGame");
-  localStorage.removeItem("autoJoinCategory");
-  location.href = "/lobby.html";
-}
-
-function playAgain() {
-  // ✅ Kategorie merken und Lobby automatisch wieder betreten
-  localStorage.removeItem("currentGame");
-  localStorage.setItem("autoJoinCategory", currentGame?.category || "sport");
-  location.href = "/lobby.html";
-}
-
-
-
+  /**
+   * Nochmal spielen:
+   * - currentGame entfernen
+   * - Kategorie merken (autoJoinCategory), damit Lobby automatisch joinen kann
+   * @returns {void}
+   */
+  function playAgain() {
+    localStorage.removeItem("currentGame");
+    localStorage.setItem("autoJoinCategory", currentGame?.category || "sport");
+    location.href = "/lobby.html";
+  }
 </script>
-
 
 </body>
 </html>
