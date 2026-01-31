@@ -28,6 +28,7 @@ public class RoundResultDTO {
 
     /**
      * ID des zugehörigen Spiels.
+     *
      */
     private Long gameId;
 

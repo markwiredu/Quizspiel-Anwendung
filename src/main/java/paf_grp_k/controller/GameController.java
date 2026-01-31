@@ -25,6 +25,7 @@ public class GameController {
 
     /**
      * Service zur Verarbeitung von Spiel- und Rundendaten.
+     *
      */
     private final GameService gameService;
 

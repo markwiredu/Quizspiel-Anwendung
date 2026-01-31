@@ -12,6 +12,7 @@ public enum GameStatus {
     /**
      * Das Spiel wurde erstellt, wartet aber noch auf weitere Spieler,
      * bevor es gestartet werden kann.
+     *
      */
     WAITING,
 

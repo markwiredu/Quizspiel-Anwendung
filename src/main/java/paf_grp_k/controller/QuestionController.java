@@ -24,6 +24,7 @@ import java.util.stream.Collectors;
  * <p>Sicherheits-Hinweis:</p>
  * <p>Für Client-Ausgaben wird {@link QuestionPublicDTO} verwendet, damit keine
  * korrekte Antwort übertragen wird (Cheating vermeiden).</p>
+ *
  */
 @RestController
 @RequestMapping("/api/questions")

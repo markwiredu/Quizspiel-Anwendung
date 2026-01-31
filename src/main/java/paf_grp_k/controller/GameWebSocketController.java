@@ -30,6 +30,7 @@ public class GameWebSocketController {
 
     /**
      * Orchestrator für Lobby- und Matchmaking-Logik.
+     *
      */
     private final LobbyMatchOrchestrator lobbyMatchOrchestrator;
 

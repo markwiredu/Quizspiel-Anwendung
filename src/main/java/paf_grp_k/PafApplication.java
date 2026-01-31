@@ -31,7 +31,6 @@ public class PafApplication {
      * <p>Spring initialisiert beim Aufruf den Application Context
      * und startet anschließend den eingebetteten Webserver.</p>
      *
-     * @param args Kommandozeilenargumente (optional)
      */
     public static void main(String[] args) {
         SpringApplication.run(PafApplication.class, args);

@@ -19,6 +19,7 @@ public class AnswerRequest {
 
     /**
      * Eindeutige ID des Spiels, zu dem die Antwort gehört.
+     *
      */
     private Long gameId;
 

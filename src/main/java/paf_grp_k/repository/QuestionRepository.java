@@ -29,6 +29,7 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
      *
      * @param category Kategorie der Fragen
      * @return Liste aller Fragen dieser Kategorie
+     *
      */
     List<Question> findByCategory(String category);
 

@@ -22,6 +22,7 @@ public class StatisticsController {
 
     /**
      * Repository zum Zugriff auf persistierte Spieler- und Statistikdaten.
+     *
      */
     private final PlayerRepository playerRepository;
 

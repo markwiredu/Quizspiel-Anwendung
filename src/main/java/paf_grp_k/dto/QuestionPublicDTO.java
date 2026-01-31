@@ -23,6 +23,7 @@ public class QuestionPublicDTO {
 
     /**
      * Eindeutige ID der Frage.
+     *
      */
     private Long id;
 

@@ -37,6 +37,7 @@ public class RoundTimerService {
 
     /**
      * Notifier zum Broadcasten von Timer-Events an Clients.
+     *
      */
     private final GameWebSocketNotifier notifier;
 

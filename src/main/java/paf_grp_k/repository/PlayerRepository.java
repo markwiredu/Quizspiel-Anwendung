@@ -23,6 +23,7 @@ public interface PlayerRepository extends JpaRepository<Player, Long> {
      * @param username der eindeutige Benutzername
      * @return ein {@link Optional}, das den gefundenen Spieler enthält
      *         oder leer ist, wenn kein Spieler existiert
+     *
      */
     Optional<Player> findByUsername(String username);
 

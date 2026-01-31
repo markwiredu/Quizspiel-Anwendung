@@ -21,6 +21,7 @@ public class CreatePlayerRequest {
     /**
      * Benutzername des neuen Spielers.
      */
+
     private String username;
 
     /**

@@ -31,6 +31,7 @@ public class CryptoConfig {
      * </ul>
      *
      * @return eine Instanz von {@code BCryptPasswordEncoder} zur sicheren Passwortverarbeitung
+     *
      */
     @Bean
     public BCryptPasswordEncoder passwordEncoder() {

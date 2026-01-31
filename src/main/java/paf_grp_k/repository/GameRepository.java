@@ -30,6 +30,7 @@ public interface GameRepository extends JpaRepository<Game, Long> {
      * @param player1Id ID des Spielers als Spieler 1
      * @param player2Id ID des Spielers als Spieler 2
      * @return Liste aller zugehörigen Spiele
+     *
      */
     List<Game> findByPlayer1IdOrPlayer2Id(Long player1Id, Long player2Id);
 

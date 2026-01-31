@@ -20,6 +20,7 @@ public class GameMatchMessage {
      * Typ der WebSocket-Nachricht.
      *
      * <p>Dient dem Client zur Unterscheidung verschiedener Nachrichtentypen.</p>
+     *
      */
     private String type = "GAME_MATCHED";
 

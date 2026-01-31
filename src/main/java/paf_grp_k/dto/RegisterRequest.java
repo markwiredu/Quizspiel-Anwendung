@@ -19,6 +19,7 @@ public class RegisterRequest {
 
     /**
      * Benutzername des neuen Spielers.
+     *
      */
     private String username;
 

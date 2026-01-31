@@ -27,6 +27,7 @@ public class LobbyUpdateMessage {
 
     /**
      * Kategorie oder Themengebiet der Lobby.
+     *
      */
     private String category;
 

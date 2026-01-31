@@ -21,6 +21,7 @@ public class JoinLobbyRequest {
 
     /**
      * Eindeutige ID des Spielers, der der Lobby beitreten möchte.
+     *
      */
     private Long playerId;
 

@@ -20,6 +20,7 @@ public class PlayerDTO {
 
     /**
      * Eindeutige ID des Spielers.
+     *
      */
     private Long id;
 

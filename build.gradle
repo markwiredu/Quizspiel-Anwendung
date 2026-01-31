@@ -1,52 +1,172 @@
+/*
+ * ============================================================================
+ * File: build.gradle (Groovy DSL)
+ * Project: QuizDuell Backend (Spring Boot)
+ *
+ * Zweck:
+ *  - Build-Konfiguration für Gradle: Plugins, Java-Version, Repositories,
+ *    Abhängigkeiten und Test-Setup.
+ *
+ * Wichtige Punkte:
+ *  - Java Toolchain: Erzwingt Java 17 (passend zu Spring Boot 3.x).
+ *  - Spring Boot Plugin: Baut/packt die Anwendung (bootJar) + Tasks.
+ *  - Dependency Management: Verwaltet Versionen über Spring BOM.
+ *  - Test: JUnit Platform (JUnit 5) aktiviert.
+ * ============================================================================
+ */
+
 plugins {
+    /** Standard Java Plugin: kompiliert Java-Code, führt Tests aus, erstellt JARs. */
     id 'java'
+
+    /**
+     * Spring Boot Plugin:
+     * - liefert Tasks wie bootRun/bootJar
+     * - konfiguriert Spring Boot Defaults (z.B. Packaging)
+     */
     id 'org.springframework.boot' version '3.5.7'
+
+    /**
+     * Spring Dependency Management:
+     * - nutzt Spring Boot BOM, um kompatible Dependency-Versionen zu wählen
+     * - verhindert Version-Konflikte im Projekt
+     */
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
+/** Maven Group ID (wird z.B. beim Publish verwendet). */
 group = 'paf_grp_k'
+
+/** Projektversion. */
 version = '0.0.1-SNAPSHOT'
+
+/** Kurze Projektbeschreibung. */
 description = 'Patterns_und_Framework_Gruppe_K'
 
 java {
     toolchain {
+        /**
+         * Java-Version für Kompilierung/Toolchain.
+         * Spring Boot 3.x setzt mindestens Java 17 voraus.
+         */
         languageVersion = JavaLanguageVersion.of(17)
     }
 }
 
 repositories {
+    /** Standard Maven Repository (enthält Spring, Lombok, Testcontainers, etc.). */
     mavenCentral()
 }
 
 dependencies {
+    // =========================================================================
+    // SPRING BOOT STARTER (Basis-Frameworks)
+    // =========================================================================
+
+    /**
+     * Spring MVC / REST:
+     * - Controller, JSON (Jackson), Embedded Tomcat
+     */
     implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    /**
+     * Spring Data JPA:
+     * - JPA/Hibernate Integration, Repositories, Entity-Management
+     */
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 
+    /**
+     * WebSocket Support (STOMP/SockJS kompatibel):
+     * - WebSocket-Endpunkte, MessageBroker-Integration
+     */
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    /**
+     * Bean Validation:
+     * - @Valid, @NotNull, @Size etc. (Jakarta Validation)
+     */
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    /**
+     * Spring Security Crypto:
+     * - BCryptPasswordEncoder (nur Crypto, keine komplette Security-Config)
+     */
     implementation 'org.springframework.security:spring-security-crypto'
+
+    /**
+     * Flyway:
+     * - DB-Migrationen (Versionierte SQL-Skripte beim App-Start)
+     */
     implementation 'org.flywaydb:flyway-core'
 
+    // =========================================================================
+    // LOMBOK
+    // =========================================================================
 
+    /**
+     * Lombok nur zur Compile-Zeit:
+     * - erzeugt Getter/Setter/Constructor/Logger etc. per Annotation
+     */
     compileOnly 'org.projectlombok:lombok'
+
+    /** Annotation Processor für Lombok (damit die Generierung beim Build passiert). */
     annotationProcessor 'org.projectlombok:lombok'
 
+    // =========================================================================
+    // DATABASE DRIVER
+    // =========================================================================
 
+    /**
+     * MySQL JDBC Driver (nur zur Laufzeit nötig).
+     */
     runtimeOnly 'com.mysql:mysql-connector-j'
 
 
+    // =========================================================================
+    // DEVTOOLS
+    // =========================================================================
 
-
-    runtimeOnly 'com.mysql:mysql-connector-j'
+    /**
+     * Spring Boot DevTools:
+     * - Auto-Restart im Development, LiveReload-Unterstützung
+     * - wird nicht in Production eingebunden
+     */
     developmentOnly 'org.springframework.boot:spring-boot-devtools'
 
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.testcontainers:junit-jupiter'
-    testImplementation 'org.testcontainers:mysql'
-    testImplementation 'org.springframework.security:spring-security-test'
+    // =========================================================================
+    // TESTING
+    // =========================================================================
 
+    /**
+     * Spring Boot Test Starter:
+     * - JUnit 5, Assertions, Mocking-Basics, Spring TestContext
+     */
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    /**
+     * Testcontainers (JUnit Jupiter Integration):
+     * - startet Container (z.B. MySQL) für Integrationstests
+     */
+    testImplementation 'org.testcontainers:junit-jupiter'
+
+    /**
+     * Testcontainers MySQL Modul:
+     * - vordefinierte MySQLContainer-Klasse
+     */
+    testImplementation 'org.testcontainers:mysql'
+
+    /**
+     * Spring Security Test:
+     * - Tools für Security-bezogene Tests (MockUser etc.)
+     * - auch wenn du "nur Crypto" nutzt, schadet es nicht
+     */
+    testImplementation 'org.springframework.security:spring-security-test'
 }
 
 tasks.named('test') {
+    /**
+     * Aktiviert JUnit Platform (JUnit 5).
+     * Ohne das laufen manche modernen Tests nicht korrekt.
+     */
     useJUnitPlatform()
 }

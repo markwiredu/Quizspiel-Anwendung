@@ -32,6 +32,7 @@ public class AuthController {
     /**
      * Passwort-Encoder zum sicheren Vergleich von Klartext-Passwörtern
      * mit gespeicherten BCrypt-Hashes.
+     *
      */
     private final BCryptPasswordEncoder passwordEncoder;
 

@@ -36,6 +36,7 @@ public class FileUploadController {
      *
      * <p>Das Verzeichnis {@code uploads/} liegt relativ zum Projekt-Root
      * und wird bei Bedarf automatisch erstellt.</p>
+     *
      */
     private static final Path UPLOAD_DIR =
             Paths.get("uploads").toAbsolutePath().normalize();

@@ -40,6 +40,7 @@ public class LobbyService {
      * Lobby-Warteschlangen pro Kategorie (normalisierter Key).
      *
      * <p>Jede Queue enthält Spieler-IDs in Join-Reihenfolge.</p>
+     *
      */
     private final Map<String, ConcurrentLinkedQueue<Long>> lobbyQueues = new ConcurrentHashMap<>();
 

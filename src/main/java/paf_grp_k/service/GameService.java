@@ -36,6 +36,7 @@ public class GameService {
 
     /**
      * Punkte pro korrekter Antwort.
+     *
      */
     private static final int POINTS_PER_CORRECT = 10;
 

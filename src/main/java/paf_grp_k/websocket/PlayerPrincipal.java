@@ -20,6 +20,7 @@ public class PlayerPrincipal implements Principal {
 
     /**
      * Identität des Principals (in diesem Projekt: Spieler-ID als String).
+     *
      */
     private final String name;
 

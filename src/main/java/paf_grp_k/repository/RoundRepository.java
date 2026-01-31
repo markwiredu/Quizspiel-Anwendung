@@ -26,6 +26,7 @@ public interface RoundRepository extends JpaRepository<Round, Long> {
      * @param gameId ID des zugehörigen Spiels
      * @param roundNumber Nummer der Runde
      * @return Optional mit der gefundenen Runde oder leer, falls nicht vorhanden
+     *
      */
     Optional<Round> findByGameIdAndRoundNumber(Long gameId, int roundNumber);
 

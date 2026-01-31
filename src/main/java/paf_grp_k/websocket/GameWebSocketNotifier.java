@@ -36,6 +36,7 @@ public class GameWebSocketNotifier {
 
     /**
      * Spring-Template zum Versenden von STOMP/WebSocket Nachrichten.
+     *
      */
     private final SimpMessagingTemplate ws;
 

@@ -19,6 +19,7 @@ public class NextRoundRequest {
 
     /**
      * Eindeutige ID des Spiels, dessen nächste Runde gestartet werden soll.
+     *
      */
     private Long gameId;
 

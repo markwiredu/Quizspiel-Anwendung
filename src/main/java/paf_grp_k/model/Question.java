@@ -26,6 +26,7 @@ public class Question {
 
     /**
      * Eindeutige ID der Frage (Primärschlüssel).
+     *
      */
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

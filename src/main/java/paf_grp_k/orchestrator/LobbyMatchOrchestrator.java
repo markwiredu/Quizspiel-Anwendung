@@ -43,6 +43,7 @@ public class LobbyMatchOrchestrator {
 
     /**
      * Dauer des Countdowns in Sekunden, bevor das Spiel tatsächlich startet.
+     *
      */
     private static final int COUNTDOWN_SECONDS = 5;
 

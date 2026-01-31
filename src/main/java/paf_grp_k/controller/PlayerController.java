@@ -26,6 +26,7 @@ public class PlayerController {
     /**
      * Standard-Avatar, der verwendet wird, wenn beim Anlegen
      * eines Spielers kein Profilbild angegeben wird.
+     *
      */
     private static final String DEFAULT_AVATAR_URL = "/images/default-avatar.jpg";
 

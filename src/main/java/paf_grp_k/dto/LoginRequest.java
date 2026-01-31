@@ -16,6 +16,7 @@ public class LoginRequest {
 
     /**
      * Eindeutige ID des Spielers, der sich anmelden möchte.
+     *
      */
     private Long playerId;
 

@@ -27,6 +27,7 @@ public class LobbyStatusDTO {
 
     /**
      * Aktueller Status der Lobby bzw. des Matchmakings.
+     *
      */
     private String status;
 

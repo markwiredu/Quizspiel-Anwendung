@@ -36,6 +36,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
      * während {@code /app/send} an einen {@code @MessageMapping}-Controller geht.</p>
      *
      * @param registry Registry zur Konfiguration des Message Brokers
+     *
      */
     @Override
     public void configureMessageBroker(MessageBrokerRegistry registry) {

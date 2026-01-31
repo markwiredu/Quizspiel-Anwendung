@@ -32,6 +32,7 @@ public class WebConfig implements WebMvcConfigurer {
      * Verzeichnis im Dateisystem und nicht um Klassenpfad-Ressourcen handelt.</p>
      *
      * @param registry Registry zur Verwaltung von Resource Handlern
+     *
      */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {

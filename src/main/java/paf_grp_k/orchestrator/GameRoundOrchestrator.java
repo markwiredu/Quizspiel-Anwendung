@@ -43,6 +43,7 @@ public class GameRoundOrchestrator {
 
     /**
      * Maximale Anzahl an Runden pro Spiel.
+     *
      */
     private static final int MAX_ROUNDS = 5;
 

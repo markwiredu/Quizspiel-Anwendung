@@ -28,6 +28,7 @@ public class GameMessaging {
 
     /**
      * Spring-Komponente zum Versenden von STOMP/WebSocket-Nachrichten.
+     *
      */
     private final SimpMessagingTemplate messagingTemplate;
 
