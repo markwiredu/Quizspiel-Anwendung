@@ -367,8 +367,7 @@
         body: JSON.stringify(payload)
       });
 
-      // Dein Backend nutzt 400 sowohl für "Username vergeben" als auch andere Validierungen.
-      // Hier bleibt dein Verhalten bewusst einfach.
+
       if (res.status === 400) throw new Error('Benutzername existiert bereits!');
       if (!res.ok) throw new Error('Registrierung fehlgeschlagen!');
 

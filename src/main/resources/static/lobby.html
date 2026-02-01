@@ -198,7 +198,7 @@
             </div>
         </div>
 
-        <!-- Live players list (optional UI, depends on updateLivePlayersDisplay hook) -->
+        <!-- Live players list -->
         <div id="livePlayersContainer" class="card mb-3 d-none">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
                 <h6 class="mb-0">👥 Aktive Spieler in Lobby</h6>
@@ -617,9 +617,6 @@
     /**
      * Lädt currentPlayer aus localStorage und baut danach WebSocket-Verbindung auf.
      *
-     * Hinweis:
-     * - Dein Original enthält einen "Test-User fallback", der hier bewusst beibehalten wurde.
-     *   In Produktion würde man stattdessen zur Login-Seite redirecten.
      *
      * @returns {void}
      */
